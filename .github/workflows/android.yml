@@ -33,12 +33,27 @@ jobs:
         "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-34" "build-tools;34.0.0"
 
     - name: Build Debug APK
-      run: gradle --no-daemon assembleDebug --stacktrace --info --warning-mode all
+      id: gradle_build
+      continue-on-error: true
+      run: gradle --no-daemon assembleDebug --stacktrace --info --warning-mode all | tee build.log
+
+    - name: Upload Gradle log
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: gradle-build-log
+        path: build.log
+
+    - name: Fail if Gradle failed
+      if: steps.gradle_build.outcome != 'success'
+      run: exit 1
 
     - name: Modify APK Name
+      if: steps.gradle_build.outcome == 'success'
       run: mv app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/MasjidTV-App.apk
 
     - name: Create Release
+      if: steps.gradle_build.outcome == 'success'
       uses: softprops/action-gh-release@v2
       with:
         files: app/build/outputs/apk/debug/MasjidTV-App.apk
