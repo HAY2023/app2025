@@ -38,4 +38,6 @@ dependencies {
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'com.google.android.material:material:1.11.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+    // مكتبة الخادم المحلي للتحكم من الحاسوب
+    implementation 'org.nanohttpd:nanohttpd:2.3.1'
 }
