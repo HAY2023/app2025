@@ -14,23 +14,21 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="نظام المسجد الآلي"
+            android:text="نظام المسجد الآلي السحابي"
             android:textSize="32sp"
             android:textColor="#FFFFFF"
             android:textStyle="bold"
             android:layout_marginBottom="10dp"/>
-            
-        <TextView
-            android:id="@+id/tvWebServerUrl"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="للتحكم من حاسوبك، افتح الرابط: http://..."
-            android:textSize="18sp"
-            android:textColor="#FFEB3B"
-            android:textStyle="bold"
-            android:layout_marginBottom="24dp"
-            android:background="#333333"
-            android:padding="10dp"/>
+
+        <Button
+            android:id="@+id/btnSyncCloud"
+            android:layout_width="350dp"
+            android:layout_height="70dp"
+            android:text="مزامنة الإعدادات من السحابة الآن"
+            android:textSize="20sp"
+            android:backgroundTint="#03A9F4"
+            android:textColor="#FFFFFF"
+            android:layout_marginBottom="30dp"/>
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -56,17 +54,9 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="00:00"
-                    android:textSize="40sp"
+                    android:textSize="50sp"
                     android:textColor="#4CAF50"
                     android:textStyle="bold"/>
-                <Button
-                    android:id="@+id/btnSetWakeTime"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_margin="8dp"
-                    android:text="ضبط من التلفاز"
-                    android:backgroundTint="#4CAF50"
-                    android:textColor="#FFFFFF"/>
             </LinearLayout>
 
             <LinearLayout
@@ -86,46 +76,31 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="00:00"
-                    android:textSize="40sp"
+                    android:textSize="50sp"
                     android:textColor="#F44336"
                     android:textStyle="bold"/>
-                <Button
-                    android:id="@+id/btnSetSleepTime"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_margin="8dp"
-                    android:text="ضبط من التلفاز"
-                    android:backgroundTint="#F44336"
-                    android:textColor="#FFFFFF"/>
             </LinearLayout>
         </LinearLayout>
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="اختر التطبيق المُراد تشغيله من قائمة تطبيقات التلفاز الآن:"
+            android:text="تطبيق التلفاز المبرمج للتشغيل:"
             android:textColor="#BBBBBB"
             android:textSize="16sp"
             android:layout_marginBottom="8dp"/>
 
-        <Spinner
-            android:id="@+id/spinnerApps"
+        <TextView
+            android:id="@+id/tvAppPackage"
             android:layout_width="350dp"
             android:layout_height="50dp"
-            android:background="#444444"
-            android:layout_marginBottom="24dp"
-            android:spinnerMode="dropdown"/>
-
-        <Button
-            android:id="@+id/btnSave"
-            android:layout_width="350dp"
-            android:layout_height="60dp"
-            android:text="حفظ الإعدادات وتفعيل المؤقت"
+            android:text="com.google.android.youtube"
+            android:gravity="center"
+            android:textColor="#FFEB3B"
             android:textSize="18sp"
-            android:backgroundTint="#2196F3"
-            android:textColor="#FFFFFF"
-            android:layout_marginBottom="24dp"/>
-            
+            android:background="#333333"
+            android:layout_marginBottom="32dp"/>
+
         <Button
             android:id="@+id/btnEnableAdmin"
             android:layout_width="350dp"

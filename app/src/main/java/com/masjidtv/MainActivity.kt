@@ -2,25 +2,24 @@ package com.masjidtv
 
 import android.app.AlarmManager
 import android.app.PendingIntent
-import android.app.TimePickerDialog
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
-import android.content.pm.PackageManager
-import android.content.pm.ResolveInfo
-import android.net.wifi.WifiManager
 import android.os.Bundle
-import android.text.format.Formatter
-import android.view.View
-import android.widget.AdapterView
-import android.widget.ArrayAdapter
+import android.util.Log
 import android.widget.Button
-import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import org.json.JSONArray
 import java.util.*
 
 class MainActivity : AppCompatActivity() {
@@ -28,11 +27,14 @@ class MainActivity : AppCompatActivity() {
     private lateinit var prefs: SharedPreferences
     private lateinit var tvWakeTime: TextView
     private lateinit var tvSleepTime: TextView
-    private lateinit var tvWebServerUrl: TextView
-    private lateinit var spinnerApps: Spinner
+    private lateinit var tvAppPackage: TextView
 
-    private var webServer: LocalWebServer? = null
-    private val appList = mutableListOf<ResolveInfo>()
+    // Supabase API details
+    private val apiUrl = "https://dxljqnchxdyhxlppbeip.supabase.co/rest/v1/tv_settings?id=eq.1&select=*"
+    private val apiKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR4bGpxbmNoeGR5aHhscHBiZWlwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzOTIwNzQsImV4cCI6MjA4ODk2ODA3NH0.TmFNsRuWK08kbflxmxAGlbLSmr7bdXopct_ui_Lqku4"
+    
+    // OkHttp Client
+    private val client = OkHttpClient()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -42,130 +44,90 @@ class MainActivity : AppCompatActivity() {
 
         tvWakeTime = findViewById(R.id.tvWakeTime)
         tvSleepTime = findViewById(R.id.tvSleepTime)
-        tvWebServerUrl = findViewById(R.id.tvWebServerUrl)
-        spinnerApps = findViewById(R.id.spinnerApps)
+        tvAppPackage = findViewById(R.id.tvAppPackage)
 
-        val btnSetWakeTime = findViewById<Button>(R.id.btnSetWakeTime)
-        val btnSetSleepTime = findViewById<Button>(R.id.btnSetSleepTime)
-        val btnSave = findViewById<Button>(R.id.btnSave)
+        val btnSyncCloud = findViewById<Button>(R.id.btnSyncCloud)
         val btnEnableAdmin = findViewById<Button>(R.id.btnEnableAdmin)
 
-        loadInstalledApps()
         updateUI()
-        startWebServer()
 
-        btnSetWakeTime.setOnClickListener { showTimePicker("WAKE_TIME") }
-        btnSetSleepTime.setOnClickListener { showTimePicker("SLEEP_TIME") }
+        btnSyncCloud.setOnClickListener {
+            Toast.makeText(this, "جاري الاتصال بالسحابة...", Toast.LENGTH_SHORT).show()
+            syncWithSupabase()
+        }
 
         btnEnableAdmin.setOnClickListener {
             val componentName = ComponentName(this, TvDeviceAdminReceiver::class.java)
             val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
                 putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, componentName)
-                putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "يُستخدم هذا الإذن لإطفاء الشاشة تلقائياً حسب أوقات المسجد.")
+                putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "يُستخدم هذا الإذن لإطفاء الشاشة تلقائياً.")
             }
             startActivity(intent)
         }
+    }
 
-        btnSave.setOnClickListener {
-            scheduleAlarm("WAKE_TIME", "WAKE_UP_TV")
-            scheduleAlarm("SLEEP_TIME", "SLEEP_TV") // You must add logic in AlarmReceiver to catch "SLEEP_TV"
-            Toast.makeText(this, "تم حفظ الأوقات وتفعيل الجدولة!", Toast.LENGTH_SHORT).show()
+    private fun syncWithSupabase() {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val request = Request.Builder()
+                    .url(apiUrl)
+                    .addHeader("apikey", apiKey)
+                    .addHeader("Authorization", "Bearer $apiKey")
+                    .build()
+
+                val response = client.newCall(request).execute()
+                val responseData = response.body?.string()
+
+                if (response.isSuccessful && responseData != null) {
+                    val jsonArray = JSONArray(responseData)
+                    if (jsonArray.length() > 0) {
+                        val setting = jsonArray.getJSONObject(0)
+                        
+                        val newWakeTime = setting.optString("wake_time", "00:00")
+                        val newSleepTime = setting.optString("sleep_time", "00:00")
+                        val newAppPkg = setting.optString("app_package", "com.google.android.youtube")
+
+                        // Remove seconds if present (e.g. 05:30:00 -> 05:30)
+                        val formattedWake = formatTime(newWakeTime)
+                        val formattedSleep = formatTime(newSleepTime)
+
+                        // Save locally
+                        prefs.edit().apply {
+                            putString("WAKE_TIME", formattedWake)
+                            putString("SLEEP_TIME", formattedSleep)
+                            putString("APP_PACKAGE", newAppPkg)
+                        }.apply()
+
+                        withContext(Dispatchers.Main) {
+                            updateUI()
+                            scheduleAlarm("WAKE_TIME", "WAKE_UP_TV")
+                            scheduleAlarm("SLEEP_TIME", "SLEEP_TV")
+                            Toast.makeText(this@MainActivity, "تمت المزامنة وتفعيل الجدولة بنجاح!", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                } else {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@MainActivity, "فشل في قراءة البيانات، تأكد من الإنترنت", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@MainActivity, "خطأ في الاتصال: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
         }
     }
 
-    private fun startWebServer() {
-        val wm = getSystemService(Context.WIFI_SERVICE) as WifiManager
-        val ipAddress = Formatter.formatIpAddress(wm.connectionInfo.ipAddress)
-        
-        if (ipAddress == "0.0.0.0") {
-            tvWebServerUrl.text = "يرجى توصيل התلفاز بالواي فاي أولاً للتحكم من الحاسوب"
-            return
-        }
-
-        tvWebServerUrl.text = "للتحكم من أي جهاز، افتح هذا الرابط: http://$ipAddress:8080"
-        
-        webServer = LocalWebServer(8080, this, prefs) {
-            runOnUiThread {
-                updateUI()
-                scheduleAlarm("WAKE_TIME", "WAKE_UP_TV")
-                scheduleAlarm("SLEEP_TIME", "SLEEP_TV")
-                Toast.makeText(this, "تم تحديث الإعدادات من الحاسوب!", Toast.LENGTH_LONG).show()
-            }
-        }
-        try {
-            webServer?.start() // Starts NanoHTTPD background server thread
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
-    private fun loadInstalledApps() {
-        val pm = packageManager
-        // Launchers
-        val intent = Intent(Intent.ACTION_MAIN, null)
-        intent.addCategory(Intent.CATEGORY_LAUNCHER)
-        
-        // Android TV Launchers
-        val tvIntent = Intent(Intent.ACTION_MAIN, null)
-        tvIntent.addCategory("android.intent.category.LEANBACK_LAUNCHER")
-
-        var activities = pm.queryIntentActivities(intent, 0)
-        activities.addAll(pm.queryIntentActivities(tvIntent, 0))
-        
-        // Remove duplicates by package
-        appList.clear()
-        val mappedPackages = HashSet<String>()
-        for (info in activities) {
-            val pkg = info.activityInfo.packageName
-            if (!mappedPackages.contains(pkg)) {
-                appList.add(info)
-                mappedPackages.add(pkg)
-            }
-        }
-
-        // Create display names
-        val displayNames = appList.map { it.loadLabel(pm).toString() }
-        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, displayNames)
-        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        spinnerApps.adapter = adapter
-
-        // Set Default selection from pref
-        val savedPkg = prefs.getString("APP_PACKAGE", "")
-        val index = appList.indexOfFirst { it.activityInfo.packageName == savedPkg }
-        if (index >= 0) {
-            spinnerApps.setSelection(index)
-        }
-
-        spinnerApps.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                val selectedPkg = appList[position].activityInfo.packageName
-                prefs.edit().putString("APP_PACKAGE", selectedPkg).apply()
-            }
-            override fun onNothingSelected(parent: AdapterView<*>?) {}
-        }
+    private fun formatTime(time: String): String {
+        val parts = time.split(":")
+        return if (parts.size >= 2) "${parts[0]}:${parts[1]}" else time
     }
 
     private fun updateUI() {
         tvWakeTime.text = prefs.getString("WAKE_TIME", "00:00")
         tvSleepTime.text = prefs.getString("SLEEP_TIME", "00:00")
-        
-        val savedPkg = prefs.getString("APP_PACKAGE", "")
-        val index = appList.indexOfFirst { it.activityInfo.packageName == savedPkg }
-        if (index >= 0) {
-            spinnerApps.setSelection(index)
-        }
-    }
-
-    private fun showTimePicker(prefKey: String) {
-        val calendar = Calendar.getInstance()
-        val hour = calendar.get(Calendar.HOUR_OF_DAY)
-        val minute = calendar.get(Calendar.MINUTE)
-
-        TimePickerDialog(this, { _, selectedHour, selectedMinute ->
-            val timeString = String.format("%02d:%02d", selectedHour, selectedMinute)
-            prefs.edit().putString(prefKey, timeString).apply()
-            updateUI()
-        }, hour, minute, true).show()
+        tvAppPackage.text = prefs.getString("APP_PACKAGE", "com.google.android.youtube")
     }
 
     private fun scheduleAlarm(prefKey: String, actionName: String) {
@@ -181,7 +143,7 @@ class MainActivity : AppCompatActivity() {
             set(Calendar.MINUTE, minute)
             set(Calendar.SECOND, 0)
             if (before(Calendar.getInstance())) {
-                add(Calendar.DATE, 1) // Next day if time already passed
+                add(Calendar.DATE, 1)
             }
         }
 
@@ -199,14 +161,9 @@ class MainActivity : AppCompatActivity() {
             alarmManager.setExactAndAllowWhileIdle(
                 AlarmManager.RTC_WAKEUP, calendar.timeInMillis, pendingIntent
             )
+            Log.d("MasjidTV", "Scheduled $actionName to $timeStr")
         } catch (e: Exception) {
-            // Permission needed on Android 12+ usually
             e.printStackTrace()
         }
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        webServer?.stop() // Stop Local Web server when app is closed to free ports
     }
 }
