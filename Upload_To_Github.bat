@@ -5,8 +5,8 @@ echo         جاري تجهيز المشروع ورفعه إلى GitHub
 echo         لإنشاء نسخة APK في قسم الإصدارات (Releases)
 echo ----------------------------------------------------
 git add .
-git commit -m "Fix CI: upload Gradle log on failure"
-git tag -f v1.0.5
+git commit -m "Fix CI: locate APK output path"
+git tag -f v1.0.7
 git push origin main --tags --force
 echo ----------------------------------------------------
 echo تم الرفع بنجاح! 

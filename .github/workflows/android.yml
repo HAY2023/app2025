@@ -48,14 +48,26 @@ jobs:
       if: steps.gradle_build.outcome != 'success'
       run: exit 1
 
-    - name: Modify APK Name
+    - name: Locate and Rename APK
       if: steps.gradle_build.outcome == 'success'
-      run: mv app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/MasjidTV-App.apk
+      id: apk
+      run: |
+        set -e
+        APK_PATH=$(find app/build/outputs/apk -type f -name "*.apk" | head -n 1)
+        if [ -z "$APK_PATH" ]; then
+          echo "No APK found. Listing outputs:"
+          find app/build/outputs -type f
+          exit 1
+        fi
+        OUTPUT_DIR=$(dirname "$APK_PATH")
+        NEW_PATH="$OUTPUT_DIR/MasjidTV-App.apk"
+        mv "$APK_PATH" "$NEW_PATH"
+        echo "apk_path=$NEW_PATH" >> "$GITHUB_OUTPUT"
 
     - name: Create Release
       if: steps.gradle_build.outcome == 'success'
       uses: softprops/action-gh-release@v2
       with:
-        files: app/build/outputs/apk/debug/MasjidTV-App.apk
+        files: ${{ steps.apk.outputs.apk_path }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
