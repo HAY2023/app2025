@@ -5,8 +5,8 @@ echo         جاري تجهيز المشروع ورفعه إلى GitHub
 echo         لإنشاء نسخة APK في قسم الإصدارات (Releases)
 echo ----------------------------------------------------
 git add .
-git commit -m "Fix CI: locate APK output path"
-git tag -f v1.0.7
+git commit -m "Fix CI: locate APK in repo"
+git tag -f v1.0.8
 git push origin main --tags --force
 echo ----------------------------------------------------
 echo تم الرفع بنجاح! 

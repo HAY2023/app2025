@@ -53,10 +53,10 @@ jobs:
       id: apk
       run: |
         set -e
-        APK_PATH=$(find app/build/outputs/apk -type f -name "*.apk" | head -n 1)
+        APK_PATH=$(find . -type f -name "*.apk" | head -n 1)
         if [ -z "$APK_PATH" ]; then
-          echo "No APK found. Listing outputs:"
-          find app/build/outputs -type f
+          echo "No APK found. Listing build outputs:"
+          find . -type d -name "outputs"
           exit 1
         fi
         OUTPUT_DIR=$(dirname "$APK_PATH")
