@@ -26,8 +26,14 @@ jobs:
         gradle-version: '8.2'
         cache-disabled: true
 
+    - name: Prepare Android SDK
+      run: |
+        echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
+        yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses
+        "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+
     - name: Build Debug APK
-      run: gradle --no-daemon assembleDebug
+      run: gradle --no-daemon assembleDebug --stacktrace --info --warning-mode all
 
     - name: Modify APK Name
       run: mv app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/MasjidTV-App.apk
