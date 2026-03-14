@@ -14,22 +14,128 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="نظام المسجد الآلي السحابي"
-            android:textSize="32sp"
-            android:textColor="#FFFFFF"
+            android:text="🕌 خدمات مساجد"
+            android:textSize="36sp"
+            android:textColor="#FFD700"
             android:textStyle="bold"
-            android:layout_marginBottom="10dp"/>
+            android:layout_marginBottom="8dp"/>
 
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="نظام التحكم الآلي السحابي"
+            android:textSize="18sp"
+            android:textColor="#AAAAAA"
+            android:layout_marginBottom="24dp"/>
+
+        <!-- ===== قسم الربط بالكود ===== -->
+        <LinearLayout
+            android:id="@+id/layoutPairing"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:background="#1E1E1E"
+            android:padding="24dp"
+            android:layout_marginBottom="20dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="🔗 ربط الجهاز بحسابك"
+                android:textSize="22sp"
+                android:textColor="#FFFFFF"
+                android:textStyle="bold"
+                android:layout_marginBottom="12dp"/>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="أدخل الكود من لوحة التحكم على الموقع"
+                android:textColor="#BBBBBB"
+                android:textSize="14sp"
+                android:layout_marginBottom="16dp"/>
+
+            <EditText
+                android:id="@+id/etPairingCode"
+                android:layout_width="250dp"
+                android:layout_height="70dp"
+                android:hint="000000"
+                android:textSize="36sp"
+                android:textColor="#FFFFFF"
+                android:textColorHint="#555555"
+                android:gravity="center"
+                android:inputType="number"
+                android:maxLength="6"
+                android:background="#333333"
+                android:letterSpacing="0.5"
+                android:layout_marginBottom="16dp"/>
+
+            <Button
+                android:id="@+id/btnPair"
+                android:layout_width="250dp"
+                android:layout_height="55dp"
+                android:text="ربط الجهاز"
+                android:textSize="20sp"
+                android:backgroundTint="#FFD700"
+                android:textColor="#000000"
+                android:textStyle="bold"/>
+
+        </LinearLayout>
+
+        <!-- ===== قسم حالة الربط ===== -->
+        <LinearLayout
+            android:id="@+id/layoutPaired"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:background="#1E1E1E"
+            android:padding="16dp"
+            android:layout_marginBottom="20dp"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="✅ الجهاز مربوط بنجاح"
+                android:textSize="20sp"
+                android:textColor="#4CAF50"
+                android:textStyle="bold"
+                android:layout_marginBottom="8dp"/>
+
+            <TextView
+                android:id="@+id/tvDeviceName"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="جهاز المسجد"
+                android:textColor="#BBBBBB"
+                android:textSize="16sp"
+                android:layout_marginBottom="8dp"/>
+
+            <Button
+                android:id="@+id/btnUnpair"
+                android:layout_width="200dp"
+                android:layout_height="45dp"
+                android:text="إلغاء الربط"
+                android:textSize="14sp"
+                android:backgroundTint="#F44336"
+                android:textColor="#FFFFFF"/>
+
+        </LinearLayout>
+
+        <!-- ===== أزرار التحكم ===== -->
         <Button
             android:id="@+id/btnSyncCloud"
             android:layout_width="350dp"
             android:layout_height="70dp"
-            android:text="مزامنة الإعدادات من السحابة الآن"
-            android:textSize="20sp"
+            android:text="☁️ مزامنة الإعدادات من السحابة"
+            android:textSize="18sp"
             android:backgroundTint="#03A9F4"
             android:textColor="#FFFFFF"
-            android:layout_marginBottom="30dp"/>
+            android:layout_marginBottom="24dp"/>
 
+        <!-- ===== عرض الإعدادات ===== -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -42,19 +148,22 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:orientation="vertical"
-                android:gravity="center">
+                android:gravity="center"
+                android:background="#1E1E1E"
+                android:padding="16dp"
+                android:layout_marginEnd="8dp">
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="وقت التشغيل (إيقاظ):"
+                    android:text="⏰ وقت التشغيل"
                     android:textColor="#BBBBBB"
-                    android:textSize="18sp"/>
+                    android:textSize="16sp"/>
                 <TextView
                     android:id="@+id/tvWakeTime"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="00:00"
-                    android:textSize="50sp"
+                    android:textSize="44sp"
                     android:textColor="#4CAF50"
                     android:textStyle="bold"/>
             </LinearLayout>
@@ -64,19 +173,22 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:orientation="vertical"
-                android:gravity="center">
+                android:gravity="center"
+                android:background="#1E1E1E"
+                android:padding="16dp"
+                android:layout_marginStart="8dp">
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="وقت الإطفاء (سكون):"
+                    android:text="🌙 وقت الإطفاء"
                     android:textColor="#BBBBBB"
-                    android:textSize="18sp"/>
+                    android:textSize="16sp"/>
                 <TextView
                     android:id="@+id/tvSleepTime"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="00:00"
-                    android:textSize="50sp"
+                    android:textSize="44sp"
                     android:textColor="#F44336"
                     android:textStyle="bold"/>
             </LinearLayout>
@@ -85,7 +197,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="تطبيق التلفاز المبرمج للتشغيل:"
+            android:text="📺 تطبيق التلفاز:"
             android:textColor="#BBBBBB"
             android:textSize="16sp"
             android:layout_marginBottom="8dp"/>
@@ -99,15 +211,25 @@
             android:textColor="#FFEB3B"
             android:textSize="18sp"
             android:background="#333333"
-            android:layout_marginBottom="32dp"/>
+            android:layout_marginBottom="24dp"/>
 
         <Button
             android:id="@+id/btnEnableAdmin"
             android:layout_width="350dp"
             android:layout_height="50dp"
-            android:text="تفعيل صلاحية مسؤول الجهاز للإطفاء التلقائي"
+            android:text="🔒 تفعيل صلاحية الإطفاء التلقائي"
             android:backgroundTint="#9C27B0"
-            android:textColor="#FFFFFF"/>
+            android:textColor="#FFFFFF"
+            android:layout_marginBottom="16dp"/>
+
+        <!-- ===== حالة الاتصال ===== -->
+        <TextView
+            android:id="@+id/tvConnectionStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🟢 متصل بالإنترنت"
+            android:textColor="#4CAF50"
+            android:textSize="14sp"/>
 
     </LinearLayout>
 </ScrollView>
