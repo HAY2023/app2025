@@ -12,12 +12,12 @@ import android.util.Log
 class AlarmReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
-        val action = intent.action
+        val action = intent.action ?: return
         Log.d("MasjidTV", "Alarm Received: $action")
 
         val prefs: SharedPreferences = context.getSharedPreferences("MasjidTVPrefs", Context.MODE_PRIVATE)
 
-        if (action == "WAKE_UP_TV") {
+        if (action == AlarmScheduler.ACTION_WAKE_UP_TV) {
             // Wake up screen
             val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
             val wakeLock = powerManager.newWakeLock(
@@ -36,7 +36,7 @@ class AlarmReceiver : BroadcastReceiver() {
                 }
             } catch (e: Exception) { e.printStackTrace() }
 
-        } else if (action == "SLEEP_TV") {
+        } else if (action == AlarmScheduler.ACTION_SLEEP_TV) {
             // Force screen off
             val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
             val componentName = ComponentName(context, TvDeviceAdminReceiver::class.java)

@@ -1,7 +1,5 @@
 package com.masjidtv
 
-import android.app.AlarmManager
-import android.app.PendingIntent
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
@@ -10,7 +8,6 @@ import android.content.SharedPreferences
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Bundle
-import android.util.Log
 import android.view.View
 import android.widget.Button
 import android.widget.EditText
@@ -29,6 +26,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
+import java.text.SimpleDateFormat
 import java.util.*
 
 class MainActivity : AppCompatActivity() {
@@ -121,6 +119,7 @@ class MainActivity : AppCompatActivity() {
 
         // Auto-sync if paired
         if (isPaired()) {
+            AlarmScheduler.rescheduleAll(this, prefs)
             syncWithSupabase()
             updateOnlineStatus(true)
         }
@@ -308,8 +307,18 @@ class MainActivity : AppCompatActivity() {
                         withContext(Dispatchers.Main) {
                             updateUI()
                             updatePairingUI()
-                            scheduleAlarm("WAKE_TIME", "WAKE_UP_TV")
-                            scheduleAlarm("SLEEP_TIME", "SLEEP_TV")
+                            AlarmScheduler.scheduleAlarm(
+                                this@MainActivity,
+                                prefs,
+                                "WAKE_TIME",
+                                AlarmScheduler.ACTION_WAKE_UP_TV
+                            )
+                            AlarmScheduler.scheduleAlarm(
+                                this@MainActivity,
+                                prefs,
+                                "SLEEP_TIME",
+                                AlarmScheduler.ACTION_SLEEP_TV
+                            )
                             Toast.makeText(this@MainActivity, "✅ تمت المزامنة بنجاح!", Toast.LENGTH_LONG).show()
                         }
                     }
@@ -329,7 +338,7 @@ class MainActivity : AppCompatActivity() {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val url = "$supabaseUrl/rest/v1/tv_settings?id=eq.$deviceId"
-                val body = """{"is_online": $isOnline, "last_seen": "${Date().toInstant()}"}"""
+                val body = """{"is_online": $isOnline, "last_seen": "${nowUtcIso()}"}"""
                     .toRequestBody(JSON_TYPE)
 
                 val request = Request.Builder()
@@ -379,41 +388,10 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun scheduleAlarm(prefKey: String, actionName: String) {
-        val timeStr = prefs.getString(prefKey, "00:00") ?: "00:00"
-        val parts = timeStr.split(":")
-        if (parts.size != 2) return
-
-        val hour = parts[0].toInt()
-        val minute = parts[1].toInt()
-
-        val calendar = Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, hour)
-            set(Calendar.MINUTE, minute)
-            set(Calendar.SECOND, 0)
-            if (before(Calendar.getInstance())) {
-                add(Calendar.DATE, 1)
-            }
-        }
-
-        val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val intent = Intent(this, AlarmReceiver::class.java).apply {
-            action = actionName
-        }
-        val requestCode = if (actionName == "WAKE_UP_TV") 0 else 1
-
-        val pendingIntent = PendingIntent.getBroadcast(
-            this, requestCode, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        try {
-            alarmManager.setExactAndAllowWhileIdle(
-                AlarmManager.RTC_WAKEUP, calendar.timeInMillis, pendingIntent
-            )
-            Log.d("MasjidTV", "Scheduled $actionName to $timeStr")
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+    private fun nowUtcIso(): String {
+        val formatter = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US)
+        formatter.timeZone = TimeZone.getTimeZone("UTC")
+        return formatter.format(Date())
     }
 
     override fun onDestroy() {
