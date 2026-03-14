@@ -2,12 +2,7 @@ package com.masjidtv
 
 import android.content.Context
 import android.content.SharedPreferences
-import android.net.wifi.WifiManager
-import android.text.format.Formatter
-import org.nanohttpd.protocols.http.IHTTPSession
-import org.nanohttpd.protocols.http.NanoHTTPD
-import org.nanohttpd.protocols.http.response.Response
-import org.nanohttpd.protocols.http.response.Status
+import fi.iki.elonen.NanoHTTPD
 
 class LocalWebServer(
     private val port: Int, 
@@ -32,7 +27,6 @@ class LocalWebServer(
                 if (newSleep != null) prefs.edit().putString("SLEEP_TIME", newSleep).apply()
                 if (newApp != null) prefs.edit().putString("APP_PACKAGE", newApp).apply()
 
-                // Notify UI
                 onSettingsUpdated()
 
             } catch (e: Exception) {
@@ -40,7 +34,6 @@ class LocalWebServer(
             }
         }
 
-        // Generate simple HTML UI for the Computer
         val currentWake = prefs.getString("WAKE_TIME", "00:00")
         val currentSleep = prefs.getString("SLEEP_TIME", "00:00")
         val currentApp = prefs.getString("APP_PACKAGE", "com.google.android.youtube")
@@ -50,7 +43,7 @@ class LocalWebServer(
             <html lang="ar" dir="rtl">
             <head>
                 <meta charset="UTF-8">
-                <title>إعدادات تفاز المسجد</title>
+                <title>إعدادات تلفاز المسجد</title>
                 <style>
                     body { font-family: Arial, sans-serif; background-color: #f4f4f9; padding: 50px; text-align: center; }
                     .container { background-color: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); display: inline-block; }
@@ -80,6 +73,6 @@ class LocalWebServer(
             </html>
         """.trimIndent()
 
-        return Response.newFixedLengthResponse(Status.OK, "text/html", html)
+        return newFixedLengthResponse(Response.Status.OK, "text/html", html)
     }
 }
