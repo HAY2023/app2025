@@ -26,48 +26,23 @@ jobs:
         gradle-version: '8.2'
         cache-disabled: true
 
-    - name: Prepare Android SDK
-      run: |
-        echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
-        yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses
-        "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+    - name: Generate Gradle Wrapper
+      run: gradle wrapper
 
     - name: Build Debug APK
-      id: gradle_build
-      continue-on-error: true
-      run: gradle --no-daemon assembleDebug --stacktrace --info --warning-mode all | tee build.log
-
-    - name: Upload Gradle log
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: gradle-build-log
-        path: build.log
-
-    - name: Fail if Gradle failed
-      if: steps.gradle_build.outcome != 'success'
-      run: exit 1
-
-    - name: Locate and Rename APK
-      if: steps.gradle_build.outcome == 'success'
-      id: apk
       run: |
-        set -e
-        APK_PATH=$(find . -type f -name "*.apk" | head -n 1)
-        if [ -z "$APK_PATH" ]; then
-          echo "No APK found. Listing build outputs:"
-          find . -type d -name "outputs"
-          exit 1
-        fi
-        OUTPUT_DIR=$(dirname "$APK_PATH")
-        NEW_PATH="$OUTPUT_DIR/MasjidTV-App.apk"
-        mv "$APK_PATH" "$NEW_PATH"
-        echo "apk_path=$NEW_PATH" >> "$GITHUB_OUTPUT"
+        chmod +x gradlew
+        ./gradlew assembleDebug --stacktrace
+
+    - name: Find and Upload APK
+      run: |
+        APK=$(find . -name "*.apk" -type f | head -1)
+        echo "Found APK: $APK"
+        cp "$APK" ./MasjidTV-App.apk
 
     - name: Create Release
-      if: steps.gradle_build.outcome == 'success'
       uses: softprops/action-gh-release@v2
       with:
-        files: ${{ steps.apk.outputs.apk_path }}
+        files: ./MasjidTV-App.apk
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
