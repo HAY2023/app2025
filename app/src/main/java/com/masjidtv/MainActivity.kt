@@ -56,6 +56,9 @@ class MainActivity : AppCompatActivity() {
 
         prefs = getSharedPreferences("MasjidTVPrefs", Context.MODE_PRIVATE)
 
+        // طلب صلاحية الإطفاء التلقائي فور تشغيل التطبيق (مباشرة)
+        promptAdminAccess()
+
         // Initialize UI
         tvWakeTime = findViewById(R.id.tvWakeTime)
         tvSleepTime = findViewById(R.id.tvSleepTime)
@@ -223,7 +226,6 @@ class MainActivity : AppCompatActivity() {
                         Toast.makeText(this@MainActivity, "✅ تم ربط الجهاز بنجاح!", Toast.LENGTH_LONG).show()
                         syncWithSupabase()
                         startLiveMonitoring()
-                        promptAdminAccess()
                     }
                 } else {
                     showToast("خطأ في إنشاء الجهاز")
@@ -421,16 +423,21 @@ class MainActivity : AppCompatActivity() {
     private fun simulateKeyEvent(keyCode: Int) {
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val inst = android.app.Instrumentation()
-                inst.sendKeyDownUpSync(keyCode)
+                // الطريقة الأولى: استخدام الروت (Root) إذا كان التلفاز مكسور الحماية
+                // هذه هي الطريقة الوحيدة المؤكدة للتحكم في التطبيقات الأخرى مثل يوتيوب
+                val process = Runtime.getRuntime().exec(arrayOf("su", "-c", "input keyevent $keyCode"))
+                process.waitFor()
             } catch (e: Exception) {
-                e.printStackTrace()
-                withContext(Dispatchers.Main) {
-                    // Fallback to Shell command if Instrumentation fails
+                // الطريقة الثانية: الأوامر العادية الشيل (نادراً ما تعمل بدون روت)
+                try {
+                    Runtime.getRuntime().exec("input keyevent $keyCode")
+                } catch (e2: Exception) {
+                    // الطريقة الثالثة: مفاتيح داخل التطبيق نفسه
                     try {
-                        Runtime.getRuntime().exec("input keyevent $keyCode")
-                    } catch (e2: Exception) {
-                        e2.printStackTrace()
+                        val inst = android.app.Instrumentation()
+                        inst.sendKeyDownUpSync(keyCode)
+                    } catch (e3: Exception) {
+                        e3.printStackTrace()
                     }
                 }
             }
