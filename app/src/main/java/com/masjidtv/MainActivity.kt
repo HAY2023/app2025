@@ -399,9 +399,40 @@ class MainActivity : AppCompatActivity() {
                     "SYNC" -> {
                         syncWithSupabase()
                     }
+                    "UP" -> simulateKeyEvent(android.view.KeyEvent.KEYCODE_DPAD_UP)
+                    "DOWN" -> simulateKeyEvent(android.view.KeyEvent.KEYCODE_DPAD_DOWN)
+                    "LEFT" -> simulateKeyEvent(android.view.KeyEvent.KEYCODE_DPAD_LEFT)
+                    "RIGHT" -> simulateKeyEvent(android.view.KeyEvent.KEYCODE_DPAD_RIGHT)
+                    "ENTER" -> simulateKeyEvent(android.view.KeyEvent.KEYCODE_DPAD_CENTER)
+                    "BACK" -> simulateKeyEvent(android.view.KeyEvent.KEYCODE_BACK)
+                    "HOME" -> {
+                        val startMain = Intent(Intent.ACTION_MAIN)
+                        startMain.addCategory(Intent.CATEGORY_HOME)
+                        startMain.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                        startActivity(startMain)
+                    }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
+            }
+        }
+    }
+
+    private fun simulateKeyEvent(keyCode: Int) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val inst = android.app.Instrumentation()
+                inst.sendKeyDownUpSync(keyCode)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                withContext(Dispatchers.Main) {
+                    // Fallback to Shell command if Instrumentation fails
+                    try {
+                        Runtime.getRuntime().exec("input keyevent $keyCode")
+                    } catch (e2: Exception) {
+                        e2.printStackTrace()
+                    }
+                }
             }
         }
     }
