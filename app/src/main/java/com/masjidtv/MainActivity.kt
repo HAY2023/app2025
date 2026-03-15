@@ -309,7 +309,7 @@ class MainActivity : AppCompatActivity() {
     private fun startLiveMonitoring() {
         if (liveMonitorJob?.isActive == true) return
         liveMonitorJob = CoroutineScope(Dispatchers.IO).launch {
-            while (kotlinx.coroutines.isActive) {
+            while (true) {
                 if (isPaired()) {
                     performLiveCheck()
                 }
@@ -356,7 +356,7 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     // الجهاز غير موجود في الموقع، إذن تم مسحه!
                     // يجب مسح الربط محلياً أيضاً
-                    withContext(Dispatchers.Main) {
+                    CoroutineScope(Dispatchers.Main).launch {
                         unpairDeviceLocalOnly()
                     }
                 }
