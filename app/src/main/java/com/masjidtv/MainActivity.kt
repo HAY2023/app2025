@@ -121,7 +121,7 @@ class MainActivity : AppCompatActivity() {
         if (isPaired()) {
             AlarmScheduler.rescheduleAll(this, prefs)
             syncWithSupabase()
-            updateOnlineStatus(true)
+            startLiveMonitoring()
         }
     }
 
@@ -222,6 +222,8 @@ class MainActivity : AppCompatActivity() {
                         updatePairingUI()
                         Toast.makeText(this@MainActivity, "✅ تم ربط الجهاز بنجاح!", Toast.LENGTH_LONG).show()
                         syncWithSupabase()
+                        startLiveMonitoring()
+                        promptAdminAccess()
                     }
                 } else {
                     showToast("خطأ في إنشاء الجهاز")
@@ -231,6 +233,25 @@ class MainActivity : AppCompatActivity() {
                 e.printStackTrace()
                 showToast("خطأ: ${e.message}")
             }
+        }
+    }
+
+    private fun promptAdminAccess() {
+        val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+        val componentName = ComponentName(this, TvDeviceAdminReceiver::class.java)
+        if (!dpm.isAdminActive(componentName)) {
+            AlertDialog.Builder(this)
+                .setTitle("خطوة أخيرة هامة ⚠️")
+                .setMessage("لكي يتمكن التطبيق والموقع من إطفاء شاشة التلفاز تلقائياً، يجب الموافقة على صلاحية 'مشرف الجهاز' في الشاشة التالية.")
+                .setPositiveButton("موافق وتفعيل") { _, _ ->
+                    val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
+                        putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, componentName)
+                        putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "يُستخدم هذا الإذن لإطفاء الشاشة تلقائياً.")
+                    }
+                    startActivity(intent)
+                }
+                .setCancelable(false)
+                .show()
         }
     }
 
@@ -263,8 +284,143 @@ class MainActivity : AppCompatActivity() {
             remove("PAIRING_CODE")
         }.apply()
 
+        liveMonitorJob?.cancel()
         updatePairingUI()
         Toast.makeText(this, "تم إلغاء الربط", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun unpairDeviceLocalOnly() {
+        prefs.edit().apply {
+            remove("DEVICE_ID")
+            remove("USER_ID")
+            remove("DEVICE_NAME")
+            remove("PAIRING_CODE")
+        }.apply()
+
+        liveMonitorJob?.cancel()
+        updatePairingUI()
+        Toast.makeText(this, "تم إلغاء الربط لحذف الجهاز من الموقع", Toast.LENGTH_LONG).show()
+    }
+
+    // ====== Live Monitoring & Control ======
+
+    private var liveMonitorJob: kotlinx.coroutines.Job? = null
+
+    private fun startLiveMonitoring() {
+        if (liveMonitorJob?.isActive == true) return
+        liveMonitorJob = CoroutineScope(Dispatchers.IO).launch {
+            while (kotlinx.coroutines.isActive) {
+                if (isPaired()) {
+                    performLiveCheck()
+                }
+                kotlinx.coroutines.delay(10000) // فحص كل 10 ثواني (سريع للتحكم الفوري)
+            }
+        }
+    }
+
+    private fun performLiveCheck() {
+        val deviceId = prefs.getString("DEVICE_ID", null) ?: return
+        try {
+            // 1. تحديث حالة الاتصال بـ Supabase
+            val updateUrl = "$supabaseUrl/rest/v1/tv_settings?id=eq.$deviceId"
+            val body = """{"is_online": true, "last_seen": "${nowUtcIso()}"}""".toRequestBody(JSON_TYPE)
+            val updateReq = Request.Builder()
+                .url(updateUrl)
+                .addHeader("apikey", apiKey)
+                .addHeader("Authorization", "Bearer $apiKey")
+                .addHeader("Prefer", "return=minimal")
+                .patch(body)
+                .build()
+            client.newCall(updateReq).execute()
+
+            // 2. فحص لو كان هناك أمر تحكم (Command)
+            val fetchUrl = "$supabaseUrl/rest/v1/tv_settings?id=eq.$deviceId&select=pending_command"
+            val fetchReq = Request.Builder()
+                .url(fetchUrl)
+                .addHeader("apikey", apiKey)
+                .addHeader("Authorization", "Bearer $apiKey")
+                .build()
+            val response = client.newCall(fetchReq).execute()
+            val responseData = response.body?.string()
+
+            if (response.isSuccessful && responseData != null) {
+                val jsonArray = JSONArray(responseData)
+                if (jsonArray.length() > 0) {
+                    val setting = jsonArray.getJSONObject(0)
+                    val cmd = setting.optString("pending_command", "")
+                    
+                    if (cmd.isNotEmpty() && cmd != "null") {
+                        executeRemoteCommand(cmd)
+                        clearRemoteCommand(deviceId)
+                    }
+                } else {
+                    // الجهاز غير موجود في الموقع، إذن تم مسحه!
+                    // يجب مسح الربط محلياً أيضاً
+                    withContext(Dispatchers.Main) {
+                        unpairDeviceLocalOnly()
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace() // تجاهل الأخطاء المؤقتة للشبكة
+        }
+    }
+
+    private fun executeRemoteCommand(cmd: String) {
+        CoroutineScope(Dispatchers.Main).launch {
+            try {
+                when (cmd) {
+                    "SLEEP" -> {
+                        val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+                        val componentName = ComponentName(this@MainActivity, TvDeviceAdminReceiver::class.java)
+                        if (dpm.isAdminActive(componentName)) {
+                            dpm.lockNow()
+                            Toast.makeText(this@MainActivity, "تم تلقي أمر إطفاء الشاشة 🌙", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(this@MainActivity, "صلاحية الإطفاء غير مفعلة!", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                    "WAKE" -> {
+                        val pm = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+                        val wakeLock = pm.newWakeLock(
+                            android.os.PowerManager.SCREEN_BRIGHT_WAKE_LOCK or android.os.PowerManager.ACQUIRE_CAUSES_WAKEUP,
+                            "MasjidTV:RemoteWake"
+                        )
+                        wakeLock.acquire(3000)
+
+                        val packageToLaunch = prefs.getString("APP_PACKAGE", "com.google.android.youtube")
+                        val launchIntent = packageManager.getLaunchIntentForPackage(packageToLaunch!!)
+                        if (launchIntent != null) {
+                            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                            startActivity(launchIntent)
+                            Toast.makeText(this@MainActivity, "تم تلقي أمر تشغيل الشاشة ☀️", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                    "SYNC" -> {
+                        syncWithSupabase()
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    private fun clearRemoteCommand(deviceId: String) {
+        try {
+            val url = "$supabaseUrl/rest/v1/tv_settings?id=eq.$deviceId"
+            val body = """{"pending_command": null}""".toRequestBody(JSON_TYPE)
+            val req = Request.Builder()
+                .url(url)
+                .addHeader("apikey", apiKey)
+                .addHeader("Authorization", "Bearer $apiKey")
+                .addHeader("Prefer", "return=minimal")
+                .patch(body)
+                .build()
+            client.newCall(req).execute()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     // ====== Sync System ======
@@ -293,6 +449,7 @@ class MainActivity : AppCompatActivity() {
                         val newSleepTime = setting.optString("sleep_time", "00:00")
                         val newAppPkg = setting.optString("app_package", "com.google.android.youtube")
                         val deviceName = setting.optString("device_name", "جهاز المسجد")
+                        val schedulesJsonStr = setting.optString("schedules_json", "")
 
                         val formattedWake = formatTime(newWakeTime)
                         val formattedSleep = formatTime(newSleepTime)
@@ -302,23 +459,13 @@ class MainActivity : AppCompatActivity() {
                             putString("SLEEP_TIME", formattedSleep)
                             putString("APP_PACKAGE", newAppPkg)
                             putString("DEVICE_NAME", deviceName)
+                            putString("SCHEDULES_JSON", schedulesJsonStr)
                         }.apply()
 
                         withContext(Dispatchers.Main) {
                             updateUI()
                             updatePairingUI()
-                            AlarmScheduler.scheduleAlarm(
-                                this@MainActivity,
-                                prefs,
-                                "WAKE_TIME",
-                                AlarmScheduler.ACTION_WAKE_UP_TV
-                            )
-                            AlarmScheduler.scheduleAlarm(
-                                this@MainActivity,
-                                prefs,
-                                "SLEEP_TIME",
-                                AlarmScheduler.ACTION_SLEEP_TV
-                            )
+                            AlarmScheduler.rescheduleAll(this@MainActivity, prefs)
                             Toast.makeText(this@MainActivity, "✅ تمت المزامنة بنجاح!", Toast.LENGTH_LONG).show()
                         }
                     }
@@ -396,6 +543,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        liveMonitorJob?.cancel()
         updateOnlineStatus(false)
     }
 }
