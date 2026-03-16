@@ -42,9 +42,13 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvSleepTime: TextView
     private lateinit var tvConnectionStatus: TextView
     private lateinit var tvDeviceName: TextView
-    private lateinit var layoutPairing: LinearLayout
-    private lateinit var layoutPaired: LinearLayout
+    private lateinit var layoutLogin: View
+    private lateinit var layoutPairing: View
+    private lateinit var layoutPaired: View
     private lateinit var etPairingCode: EditText
+    private lateinit var etEmail: EditText
+    private lateinit var etPassword: EditText
+    private var autoLaunchJob: kotlinx.coroutines.Job? = null
 
     // Supabase
     private val supabaseUrl = "https://dxljqnchxdyhxlppbeip.supabase.co"
@@ -74,19 +78,50 @@ class MainActivity : AppCompatActivity() {
         tvSleepTime = findViewById(R.id.tvSleepTime)
         tvConnectionStatus = findViewById(R.id.tvConnectionStatus)
         tvDeviceName = findViewById(R.id.tvDeviceName)
+        layoutLogin = findViewById(R.id.layoutLogin)
         layoutPairing = findViewById(R.id.layoutPairing)
         layoutPaired = findViewById(R.id.layoutPaired)
         etPairingCode = findViewById(R.id.etPairingCode)
+        etEmail = findViewById(R.id.etEmail)
+        etPassword = findViewById(R.id.etPassword)
 
+        val btnLogin = findViewById<Button>(R.id.btnLogin)
+        val btnToggleLoginMode = findViewById<TextView>(R.id.btnToggleLoginMode)
+        val btnBackToLogin = findViewById<TextView>(R.id.btnBackToLogin)
         val btnSyncCloud = findViewById<Button>(R.id.btnSyncCloud)
         val btnSelectApp = findViewById<Button>(R.id.btnSelectApp)
         val btnPair = findViewById<Button>(R.id.btnPair)
         val btnUnpair = findViewById<Button>(R.id.btnUnpair)
+        val btnCancelAutoLaunch = findViewById<Button>(R.id.btnCancelAutoLaunch)
 
-        // Check pairing state
-        updatePairingUI()
-        updateUI()
-        updateConnectionStatus()
+        btnCancelAutoLaunch.setOnClickListener {
+            autoLaunchJob?.cancel()
+            btnCancelAutoLaunch.visibility = View.GONE
+            tvConnectionStatus.text = "تم إيقاف التشغيل التلقائي. يمكنك المزامنة يدوياً."
+            tvConnectionStatus.setTextColor(android.graphics.Color.WHITE)
+            tvConnectionStatus.textSize = 14f
+        }
+
+        // Login Logic
+        btnLogin.setOnClickListener {
+            val email = etEmail.text.toString().trim()
+            val password = etPassword.text.toString().trim()
+            if (email.isEmpty() || password.isEmpty()) {
+                Toast.makeText(this, "يرجى إدخال البريد وكلمة المرور", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            performLogin(email, password)
+        }
+
+        btnToggleLoginMode.setOnClickListener {
+            layoutLogin.visibility = View.GONE
+            layoutPairing.visibility = View.VISIBLE
+        }
+
+        btnBackToLogin.setOnClickListener {
+            layoutPairing.visibility = View.GONE
+            layoutLogin.visibility = View.VISIBLE
+        }
 
         // Pair device button
         btnPair.setOnClickListener {
@@ -95,11 +130,14 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, "أدخل كود من 6 أرقام", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            Toast.makeText(this, "جاري الربط...", Toast.LENGTH_SHORT).show()
             pairDevice(code)
         }
 
-        // Unpair device button
+        // Check pairing state
+        updatePairingUI()
+        updateUI()
+        updateConnectionStatus()
+
         btnUnpair.setOnClickListener {
             AlertDialog.Builder(this)
                 .setTitle("إلغاء الربط")
@@ -109,21 +147,16 @@ class MainActivity : AppCompatActivity() {
                 .show()
         }
 
-        // Sync button
         btnSyncCloud.setOnClickListener {
             if (!isPaired()) {
-                Toast.makeText(this, "يجب ربط الجهاز أولاً بكود من الموقع", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "يجب ربط الجهاز أولاً", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            Toast.makeText(this, "☁️ جاري المزامنة...", Toast.LENGTH_SHORT).show()
             syncWithSupabase()
         }
 
-        // Select Target App and Check Accessibility
         updateAppBtnText(btnSelectApp)
-        btnSelectApp.setOnClickListener {
-            showAppSelectionDialog(btnSelectApp)
-        }
+        btnSelectApp.setOnClickListener { showAppSelectionDialog(btnSelectApp) }
         btnSelectApp.setOnLongClickListener {
             showTestRemoteDialog()
             true
@@ -146,8 +179,9 @@ class MainActivity : AppCompatActivity() {
             tvConnectionStatus.text = "سيتم تشغيل تطبيق القناة بعد 5 ثواني..."
             tvConnectionStatus.textSize = 22f
             tvConnectionStatus.setTextColor(android.graphics.Color.YELLOW)
+            btnCancelAutoLaunch.visibility = View.VISIBLE
             
-            CoroutineScope(Dispatchers.Main).launch {
+            autoLaunchJob = CoroutineScope(Dispatchers.Main).launch {
                 delay(5000)
                 val targetApp = prefs.getString("APP_PACKAGE", "com.google.android.youtube")
                 val launchIntent = packageManager.getLaunchIntentForPackage(targetApp!!)
@@ -169,12 +203,87 @@ class MainActivity : AppCompatActivity() {
 
     private fun updatePairingUI() {
         if (isPaired()) {
+            layoutLogin.visibility = View.GONE
             layoutPairing.visibility = View.GONE
             layoutPaired.visibility = View.VISIBLE
-            tvDeviceName.text = prefs.getString("DEVICE_NAME", "جهاز المسجد")
+            val deviceName = prefs.getString("DEVICE_NAME", "الجهاز مربوط ✅")
+            val userEmail = prefs.getString("USER_EMAIL", "بدون حساب")
+            tvDeviceName.text = deviceName
+            findViewById<TextView>(R.id.tvUserInfo).text = "الحساب: $userEmail"
         } else {
-            layoutPairing.visibility = View.VISIBLE
+            layoutLogin.visibility = View.VISIBLE
+            layoutPairing.visibility = View.GONE
             layoutPaired.visibility = View.GONE
+        }
+    }
+
+    private fun performLogin(email: String, pass: String) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                // Supabase Auth (simplified check for demo - in prod use proper Auth SDK)
+                // Here we fetch if a user exists with this email (assuming password is handled or for a simplified mock)
+                // For a real implementation, you would call Supabase Auth API
+                
+                val url = "$supabaseUrl/auth/v1/token?grant_type=password"
+                val json = """{"email":"$email","password":"$pass"}""".toRequestBody(JSON_TYPE)
+                val req = Request.Builder().url(url)
+                    .addHeader("apikey", apiKey)
+                    .post(json).build()
+                
+                val res = client.newCall(req).execute()
+                val data = res.body?.string()
+                
+                if (res.isSuccessful && data != null) {
+                    val userObj = JSONObject(data).getJSONObject("user")
+                    val userId = userObj.getString("id")
+                    
+                    // After login, we automatically "pair" or find the device assigned to this user
+                    // For now, let's create/find a default device for this user
+                    val deviceId = UUID.randomUUID().toString()
+                    
+                    // Create device entry
+                    val deviceJson = JSONObject().apply {
+                        put("id", deviceId)
+                        put("user_id", userId)
+                        put("device_name", "جهاز المسجد - دخول مباشر")
+                    }
+                    
+                    val createReq = Request.Builder()
+                        .url("$supabaseUrl/rest/v1/tv_settings")
+                        .addHeader("apikey", apiKey)
+                        .addHeader("Authorization", "Bearer $apiKey")
+                        .post(deviceJson.toString().toRequestBody(JSON_TYPE))
+                        .build()
+                    
+                    client.newCall(createReq).execute()
+
+                    prefs.edit().apply {
+                        putString("DEVICE_ID", deviceId)
+                        putString("USER_ID", userId)
+                        putString("USER_EMAIL", email)
+                        putString("DEVICE_NAME", "جهاز المسجد (دخول)")
+                    }.apply()
+
+                    withContext(Dispatchers.Main) {
+                        updatePairingUI()
+                        startBackgroundService()
+                        syncWithSupabase()
+                    }
+                } else {
+                    showToast("❌ فشل تسجيل الدخول: تحقق من البيانات")
+                }
+            } catch (e: Exception) {
+                showToast("خطأ: ${e.message}")
+            }
+        }
+    }
+
+    private fun startBackgroundService() {
+        val serviceIntent = Intent(this, MasjidService::class.java)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(serviceIntent)
+        } else {
+            startService(serviceIntent)
         }
     }
 
@@ -250,6 +359,7 @@ class MainActivity : AppCompatActivity() {
                     prefs.edit().apply {
                         putString("DEVICE_ID", deviceId)
                         putString("USER_ID", userId)
+                        putString("USER_EMAIL", "مرتبط عبر الكود 🔗")
                         putString("DEVICE_NAME", "جهاز المسجد")
                         putString("PAIRING_CODE", code)
                     }.apply()
@@ -459,17 +569,31 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateAppBtnText(btn: Button) {
         val currentApp = prefs.getString("APP_PACKAGE", "com.google.android.youtube")
-        var appName = "يوتيوب (افتراضي)"
+        var appName = "يوتيوب"
         try {
             val pm = packageManager
             val info = pm.getApplicationInfo(currentApp!!, 0)
             appName = pm.getApplicationLabel(info).toString()
         } catch (e: Exception) {}
 
-        if (MasjidAccessibilityService.isServiceActive) {
-            btn.text = "صلاحية الإطفاء مفعلة ✅ - تطبيق: $appName"
-        } else {
-            btn.text = "التطبيق الحالي: $appName - اضغط لاختيار التطبيق أو تفعيل الإطفاء"
+        val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
+        val adminName = android.content.ComponentName(this, TvDeviceAdminReceiver::class.java)
+        val isAdmin = dpm.isAdminActive(adminName)
+        val isAcc = MasjidAccessibilityService.isServiceActive
+
+        when {
+            isAdmin && isAcc -> {
+                btn.text = "نظام التحكم مفعل بالكامل ✅ ($appName)"
+                btn.setBackgroundColor(android.graphics.Color.parseColor("#059669"))
+            }
+            isAdmin || isAcc -> {
+                btn.text = "صلاحيات جزئية.. اضغط للإكمال ⚠️ ($appName)"
+                btn.setBackgroundColor(android.graphics.Color.parseColor("#D97706"))
+            }
+            else -> {
+                btn.text = "إعدادات القناة والتحكم ⚙️ ($appName)"
+                btn.setBackgroundColor(android.graphics.Color.parseColor("#8B5CF6"))
+            }
         }
     }
 
@@ -482,26 +606,38 @@ class MainActivity : AppCompatActivity() {
         val appPackages = apps.map { it.activityInfo.packageName }.toTypedArray()
 
         AlertDialog.Builder(this)
-            .setTitle("اختر التطبيق المفضل")
+            .setTitle("إعدادات التحكم والتطبيق")
             .setItems(appNames) { _, which ->
                 val selectedPkg = appPackages[which]
                 prefs.edit().putString("APP_PACKAGE", selectedPkg).apply()
                 updateAppBtnText(btn)
-                Toast.makeText(this, "تم اختيار التطبيق بنجاح", Toast.LENGTH_SHORT).show()
-                
-                // Prompt Accessibility if missing
-                if (!MasjidAccessibilityService.isServiceActive) {
-                    val intent = Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
-                    startActivity(intent)
-                    Toast.makeText(this, "⚠️ من فضلك فعّل خدمة مساجد (Masjid TV) من الإعدادات لإطفاء الشاشة!", Toast.LENGTH_LONG).show()
-                }
+                checkAndRequestPermissions()
             }
-            .setNeutralButton("تفعيل صلاحية الإطفاء فقط") { _, _ ->
-                val intent = Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
-                startActivity(intent)
+            .setNeutralButton("تفعيل الصلاحيات فقط") { _, _ ->
+                checkAndRequestPermissions()
             }
             .setNegativeButton("إلغاء", null)
             .show()
+    }
+
+    private fun checkAndRequestPermissions() {
+        val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
+        val adminName = android.content.ComponentName(this, TvDeviceAdminReceiver::class.java)
+
+        if (!dpm.isAdminActive(adminName)) {
+            val intent = Intent(android.app.admin.DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN)
+            intent.putExtra(android.app.admin.DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminName)
+            intent.putExtra(android.app.admin.DevicePolicyManager.EXTRA_ADD_EXPLANATION, "يُستخدم لإطفاء الشاشة تلقائياً")
+            startActivity(intent)
+            Toast.makeText(this, "⚠️ يُرجى تفعيل 'مسؤول الجهاز' أولاً", Toast.LENGTH_LONG).show()
+            return
+        }
+
+        if (!MasjidAccessibilityService.isServiceActive) {
+            val intent = Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
+            startActivity(intent)
+            Toast.makeText(this, "⚠️ يُرجى تفعيل خدمة 'مساجد' ثانياً", Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun showTestRemoteDialog() {

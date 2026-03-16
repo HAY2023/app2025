@@ -22,14 +22,17 @@ import java.util.*
 
 class MasjidService : Service() {
 
-    private val supabaseUrl = "https://wzcdvxyrbsxicmyfddbz.supabase.co"
-    private val apiKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind6Y2R2eHlyYnN4aWNteWZkZGJ6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDEyMDI3NDcsImV4cCI6MjA1Njc3ODc0N30.r801j00-4hRz5Y-G4T0G5y1uA1U1X2q40k44U-4kP5o" // NOTE: Ensure correct API key
+    private val supabaseUrl = "https://dxljqnchxdyhxlppbeip.supabase.co"
+    private val apiKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR4bGpxbmNoeGR5aHhscHBiZWlwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzOTIwNzQsImV4cCI6MjA1Njc3ODc0N30.TmFNsRuWK08kbflxmxAGlbLSmr7bdXopct_ui_Lqku4"
     private val client = OkHttpClient()
     private val JSON_TYPE = "application/json; charset=utf-8".toMediaType()
 
     private var monitorJob: Job? = null
+    private var screenshotJob: Job? = null
+    private var powerEnforcerJob: Job? = null
     private var windowManager: WindowManager? = null
     private var fakeSleepView: View? = null
+    private var isSleeping = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -152,83 +155,139 @@ class MasjidService : Service() {
             audioManager.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, 0, 0)
         } catch (e: Exception) {}
 
-        try {
-            // Priority 1: Accessibility Service (Authentic Sleep)
-            if (MasjidAccessibilityService.isServiceActive) {
-                val intent = Intent(MasjidAccessibilityService.ACTION_REMOTE_COMMAND)
-                intent.putExtra(MasjidAccessibilityService.EXTRA_COMMAND, "SLEEP")
-                sendBroadcast(intent)
-                return
-            }
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                // 1. Aggressive System Settings (Root) - Disable Stay Awake
+                Runtime.getRuntime().exec(arrayOf("su", "-c", "svc power stayawake false"))
+                Runtime.getRuntime().exec(arrayOf("su", "-c", "settings put global stay_on_while_plugged_in 0"))
+                
+                // 2. HDMI-CEC Standby (Root)
+                Runtime.getRuntime().exec(arrayOf("su", "-c", "echo 'standby 0' | cec-client -s -d 1"))
+                Runtime.getRuntime().exec(arrayOf("su", "-c", "cmd hdmi_control standby"))
+            } catch (e: Exception) {}
 
-            // Priority 2: Try root sleep command
-            Runtime.getRuntime().exec(arrayOf("su", "-c", "input keyevent 26"))
-        } catch (e: Exception) {
-            // Priority 3: Fake Sleep Overlay
-            if (fakeSleepView == null) {
-                if (android.provider.Settings.canDrawOverlays(this)) {
-                    val params = WindowManager.LayoutParams(
-                        WindowManager.LayoutParams.MATCH_PARENT,
-                        WindowManager.LayoutParams.MATCH_PARENT,
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else WindowManager.LayoutParams.TYPE_PHONE,
-                        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or 
-                                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
-                        PixelFormat.TRANSLUCENT
-                    )
-                    params.screenBrightness = 0f // Set screen brightness to minimum
-                    
-                    val layout = FrameLayout(this)
-                    layout.setBackgroundColor(Color.BLACK) // Pitch black
+            withContext(Dispatchers.Main) {
+                try {
+                    // 3. Device Admin Lock (Highly effective)
+                    val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
+                    val componentName = android.content.ComponentName(this@MasjidService, TvDeviceAdminReceiver::class.java)
+                    if (dpm.isAdminActive(componentName)) {
+                        dpm.lockNow()
+                    }
 
-                    windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-                    windowManager?.addView(layout, params)
-                    fakeSleepView = layout
-                } else {
-                    // Try shell directly
-                    try { Runtime.getRuntime().exec("input keyevent 26") } catch (ex: Exception) { }
+                    // 4. Accessibility Service (System Lock)
+                    if (MasjidAccessibilityService.isServiceActive) {
+                        val intent = Intent(MasjidAccessibilityService.ACTION_REMOTE_COMMAND)
+                        intent.putExtra(MasjidAccessibilityService.EXTRA_COMMAND, "SLEEP")
+                        sendBroadcast(intent)
+                    }
+
+                    // 5. Root Keyevent Sleep
+                    Runtime.getRuntime().exec(arrayOf("su", "-c", "input keyevent 26"))
+                } catch (e: Exception) {}
+
+                // 6. Final Fallback: Fake Sleep Overlay (Black screen + Min Brightness)
+                if (fakeSleepView == null) {
+                    if (android.provider.Settings.canDrawOverlays(this@MasjidService)) {
+                        val params = WindowManager.LayoutParams(
+                            WindowManager.LayoutParams.MATCH_PARENT,
+                            WindowManager.LayoutParams.MATCH_PARENT,
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else WindowManager.LayoutParams.TYPE_PHONE,
+                            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or 
+                                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+                                    WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON.inv(), // DO NOT KEEP SCREEN ON
+                            PixelFormat.TRANSLUCENT
+                        )
+                        params.screenBrightness = 0.001f 
+                        
+                        val layout = FrameLayout(this@MasjidService)
+                        layout.setBackgroundColor(Color.BLACK) 
+
+                        windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+                        windowManager?.addView(layout, params)
+                        fakeSleepView = layout
+                    }
                 }
+                
+                // 7. Start "Insane Mode" Enforcement Loop
+                isSleeping = true
+                startPowerEnforcement()
+            }
+        }
+    }
+
+    private fun startPowerEnforcement() {
+        powerEnforcerJob?.cancel()
+        powerEnforcerJob = CoroutineScope(Dispatchers.IO).launch {
+            while (isActive && isSleeping) {
+                try {
+                    // Constant Re-locking and CEC Standby every 30 seconds
+                    Runtime.getRuntime().exec(arrayOf("su", "-c", "input keyevent 26"))
+                    Runtime.getRuntime().exec(arrayOf("su", "-c", "cmd hdmi_control standby"))
+                    
+                    // Kill foreground tasks that might stay awake (like some players)
+                    Runtime.getRuntime().exec(arrayOf("su", "-c", "am kill-all"))
+                    
+                    // Force Screen Off via System Service
+                    Runtime.getRuntime().exec(arrayOf("su", "-c", "service call power 1 i32 0 i32 0"))
+                    
+                } catch (e: Exception) {}
+                delay(30000)
             }
         }
     }
 
     private fun deactivateFakeSleep() {
-        // Remove Fake Sleep overlay if active
+        isSleeping = false
+        powerEnforcerJob?.cancel()
+        
+        // Remove Fake Sleep overlay
         if (fakeSleepView != null && windowManager != null) {
             try { windowManager?.removeView(fakeSleepView) } catch (e: Exception) {}
             fakeSleepView = null
         }
 
-        // Unmute Audio during Wake
-        try {
-            val audioManager = getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
-            // Restore to a decent volume level (30%)
-            val maxVol = audioManager.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC)
-            audioManager.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, (maxVol * 0.3).toInt(), 0)
-        } catch (e: Exception) {}
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                // 1. Aggressive Power Force (Root)
+                Runtime.getRuntime().exec(arrayOf("su", "-c", "svc power stayawake true"))
+                
+                // 2. HDMI-CEC Wakeup (Root)
+                Runtime.getRuntime().exec(arrayOf("su", "-c", "echo 'on 0' | cec-client -s -d 1"))
+                Runtime.getRuntime().exec(arrayOf("su", "-c", "cmd hdmi_control one_touch_play"))
 
-        // Priority 1: Accessibility Service check (wake action not directly supported, so relies on WakeLock below)
-        
-        // Priority 2: Try root wake command
-        try {
-            Runtime.getRuntime().exec(arrayOf("su", "-c", "input keyevent 224")) 
-        } catch (e: Exception) {}
+                // 3. Wake Keyevents
+                Runtime.getRuntime().exec(arrayOf("su", "-c", "input keyevent 224")) 
+                Runtime.getRuntime().exec(arrayOf("su", "-c", "input keyevent 82")) // Unlock
+            } catch (e: Exception) {}
 
-        val pm = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
-        val wakeLock = pm.newWakeLock(
-            android.os.PowerManager.SCREEN_BRIGHT_WAKE_LOCK or android.os.PowerManager.ACQUIRE_CAUSES_WAKEUP,
-            "MasjidTV:RemoteWake"
-        )
-        wakeLock.acquire(3000)
+            withContext(Dispatchers.Main) {
+                // 4. WakeLock Acquire
+                val pm = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+                val wakeLock = pm.newWakeLock(
+                    android.os.PowerManager.SCREEN_BRIGHT_WAKE_LOCK or android.os.PowerManager.ACQUIRE_CAUSES_WAKEUP,
+                    "MasjidTV:RemoteWake"
+                )
+                wakeLock.acquire(10000)
 
-        // Launch target app
-        val prefs = getSharedPreferences("MasjidTVPrefs", Context.MODE_PRIVATE)
-        val packageToLaunch = prefs.getString("APP_PACKAGE", "com.google.android.youtube")
-        val launchIntent = packageManager.getLaunchIntentForPackage(packageToLaunch!!)
-        if (launchIntent != null) {
-            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-            startActivity(launchIntent)
+                // 5. Restore Audio
+                try {
+                    val audioManager = getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+                    val maxVol = audioManager.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC)
+                    audioManager.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, (maxVol * 0.5).toInt(), 0)
+                } catch (e: Exception) {}
+
+                // 6. Launch target app
+                val prefs = getSharedPreferences("MasjidTVPrefs", Context.MODE_PRIVATE)
+                val packageToLaunch = prefs.getString("APP_PACKAGE", "com.google.android.youtube")
+                val launchIntent = packageManager.getLaunchIntentForPackage(packageToLaunch!!)
+                if (launchIntent != null) {
+                    launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                    startActivity(launchIntent)
+                }
+            }
         }
     }
 
@@ -288,6 +347,8 @@ class MasjidService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         monitorJob?.cancel()
+        screenshotJob?.cancel()
+        powerEnforcerJob?.cancel()
         
         if (fakeSleepView != null) {
             windowManager?.removeView(fakeSleepView)
