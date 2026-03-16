@@ -237,6 +237,9 @@ class MainActivity : AppCompatActivity() {
                         updatePairingUI()
                         startBackgroundService()
                         syncWithSupabase()
+                        
+                        // إرسال التطبيق للخلفية حتى لا يشوش على الشاشة
+                        moveTaskToBack(true)
                     }
                 } else {
                     showToast("❌ فشل تسجيل الدخول: تحقق من البيانات")
@@ -338,14 +341,16 @@ class MainActivity : AppCompatActivity() {
                         Toast.makeText(this@MainActivity, "✅ تم ربط الجهاز بنجاح!", Toast.LENGTH_LONG).show()
                         syncWithSupabase()
                         
-            
-            // إظهار نافذة العد التنازلي
+            // إظهار نافذة العد التنازلي - قديم، الآن يتم إرساله للخلفية مباشرة
                         val serviceIntent = Intent(this@MainActivity, MasjidService::class.java)
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                             startForegroundService(serviceIntent)
                         } else {
                             startService(serviceIntent)
                         }
+                        
+                        // إرسال التطبيق للخلفية حتى لا يشوش على الشاشة
+                        moveTaskToBack(true)
                     }
                 } else {
                     showToast("خطأ في إنشاء الجهاز")

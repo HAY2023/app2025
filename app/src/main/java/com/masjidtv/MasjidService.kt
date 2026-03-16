@@ -51,7 +51,7 @@ class MasjidService : Service() {
                 if (deviceId != null) {
                     performLiveCheck(deviceId)
                 }
-                delay(10000)
+                delay(3000) // Polling every 3 seconds for extremely fast response
             }
         }
     }
