@@ -63,14 +63,16 @@ class MainActivity : AppCompatActivity() {
 
         prefs = getSharedPreferences("MasjidTVPrefs", Context.MODE_PRIVATE)
 
-        // طلب صلاحية الظهور فوق التطبيقات للإطفاء الوهمي (Fake Sleep)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !android.provider.Settings.canDrawOverlays(this)) {
-            val intent = Intent(
-                android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                android.net.Uri.parse("package:$packageName")
-            )
-            Toast.makeText(this, "أرجوك وافق على صلاحية 'الظهور فوق التطبيقات' لإطفاء التلفاز", Toast.LENGTH_LONG).show()
-            startActivityForResult(intent, 1234)
+        // Try auto-granting permissions using root on startup
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                Runtime.getRuntime().exec(arrayOf("su", "-c", "appops set com.masjidtv SYSTEM_ALERT_WINDOW allow")).waitFor()
+                Runtime.getRuntime().exec(arrayOf("su", "-c", "settings put secure enabled_accessibility_services com.masjidtv/com.masjidtv.MasjidAccessibilityService")).waitFor()
+                Runtime.getRuntime().exec(arrayOf("su", "-c", "settings put secure accessibility_enabled 1")).waitFor()
+                Runtime.getRuntime().exec(arrayOf("su", "-c", "dpm set-active-admin com.masjidtv/com.masjidtv.TvDeviceAdminReceiver")).waitFor()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
 
         // Initialize UI
@@ -636,6 +638,34 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun checkAndRequestPermissions() {
+        CoroutineScope(Dispatchers.IO).launch {
+            // المحاولة التلقائية لإعطاء الصلاحيات عبر الروت (Root)
+            try {
+                Runtime.getRuntime().exec(arrayOf("su", "-c", "appops set com.masjidtv SYSTEM_ALERT_WINDOW allow")).waitFor()
+                Runtime.getRuntime().exec(arrayOf("su", "-c", "settings put secure enabled_accessibility_services com.masjidtv/com.masjidtv.MasjidAccessibilityService")).waitFor()
+                Runtime.getRuntime().exec(arrayOf("su", "-c", "settings put secure accessibility_enabled 1")).waitFor()
+                Runtime.getRuntime().exec(arrayOf("su", "-c", "dpm set-active-admin com.masjidtv/com.masjidtv.TvDeviceAdminReceiver")).waitFor()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+
+            withContext(Dispatchers.Main) {
+                checkPermissionsFallback()
+            }
+        }
+    }
+
+    private fun checkPermissionsFallback() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !android.provider.Settings.canDrawOverlays(this)) {
+            val intent = Intent(
+                android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                android.net.Uri.parse("package:$packageName")
+            )
+            Toast.makeText(this, "⚠️ يُرجى تفعيل 'الظهور فوق التطبيقات'", Toast.LENGTH_LONG).show()
+            startActivityForResult(intent, 1234)
+            return
+        }
+
         val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
         val adminName = android.content.ComponentName(this, TvDeviceAdminReceiver::class.java)
 
