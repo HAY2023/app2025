@@ -369,11 +369,6 @@ class MainActivity : AppCompatActivity() {
                         Toast.makeText(this@MainActivity, "✅ تم ربط الجهاز بنجاح!", Toast.LENGTH_LONG).show()
                         syncWithSupabase()
                         
-                        // تفعيل ميزة "جهاز التحكم التجريبي" عند النقر الطويل على زر الإعدادات
-            btnSelectApp.setOnLongClickListener {
-                showTestRemoteDialog()
-                true
-            }
             
             // إظهار نافذة العد التنازلي
                         val serviceIntent = Intent(this@MainActivity, MasjidService::class.java)
@@ -419,6 +414,7 @@ class MainActivity : AppCompatActivity() {
         prefs.edit().apply {
             remove("DEVICE_ID")
             remove("USER_ID")
+            remove("USER_EMAIL")
             remove("DEVICE_NAME")
             remove("PAIRING_CODE")
         }.apply()
@@ -431,6 +427,7 @@ class MainActivity : AppCompatActivity() {
         prefs.edit().apply {
             remove("DEVICE_ID")
             remove("USER_ID")
+            remove("USER_EMAIL")
             remove("DEVICE_NAME")
             remove("PAIRING_CODE")
         }.apply()
@@ -609,9 +606,27 @@ class MainActivity : AppCompatActivity() {
             .setTitle("إعدادات التحكم والتطبيق")
             .setItems(appNames) { _, which ->
                 val selectedPkg = appPackages[which]
-                prefs.edit().putString("APP_PACKAGE", selectedPkg).apply()
-                updateAppBtnText(btn)
-                checkAndRequestPermissions()
+                val selectedName = appNames[which]
+                
+                AlertDialog.Builder(this)
+                    .setTitle(selectedName)
+                    .setMessage("ماذا تريد أن تفعل؟")
+                    .setPositiveButton("اختيار كافتراضي") { _, _ ->
+                        prefs.edit().putString("APP_PACKAGE", selectedPkg).apply()
+                        updateAppBtnText(btn)
+                        checkAndRequestPermissions()
+                    }
+                    .setNeutralButton("تشغيل للتجربة الآن 🚀") { _, _ ->
+                        val launchIntent = packageManager.getLaunchIntentForPackage(selectedPkg)
+                        if (launchIntent != null) {
+                            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            startActivity(launchIntent)
+                        } else {
+                            Toast.makeText(this, "فشل تشغيل التطبيق", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                    .setNegativeButton("رجوع", null)
+                    .show()
             }
             .setNeutralButton("تفعيل الصلاحيات فقط") { _, _ ->
                 checkAndRequestPermissions()
