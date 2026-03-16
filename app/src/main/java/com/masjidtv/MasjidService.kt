@@ -185,8 +185,8 @@ class MasjidService : Service() {
                             sendBroadcast(intent)
                         }
 
-                        // 5. Root Keyevent Sleep
-                        Runtime.getRuntime().exec(arrayOf("su", "-c", "input keyevent 26"))
+                        // 5. Root Keyevent Sleep (223 is strictly SLEEP, unlike 26 which is a POWER toggle)
+                        Runtime.getRuntime().exec(arrayOf("su", "-c", "input keyevent 223"))
                     } catch (e: Exception) {}
                 }
 
@@ -229,7 +229,7 @@ class MasjidService : Service() {
                 if (powerManager.isInteractive) {
                     try {
                         // Constant Re-locking and CEC Standby every 10 seconds if screen refuses to sleep
-                        Runtime.getRuntime().exec(arrayOf("su", "-c", "input keyevent 26"))
+                        Runtime.getRuntime().exec(arrayOf("su", "-c", "input keyevent 223")) // KEYCODE_SLEEP
                         Runtime.getRuntime().exec(arrayOf("su", "-c", "cmd hdmi_control standby"))
                         
                         // Kill foreground tasks that might stay awake (like some players)
@@ -284,14 +284,7 @@ class MasjidService : Service() {
                     audioManager.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, (maxVol * 0.5).toInt(), 0)
                 } catch (e: Exception) {}
 
-                // 6. Launch target app
-                val prefs = getSharedPreferences("MasjidTVPrefs", Context.MODE_PRIVATE)
-                val packageToLaunch = prefs.getString("APP_PACKAGE", "com.google.android.youtube")
-                val launchIntent = packageManager.getLaunchIntentForPackage(packageToLaunch!!)
-                if (launchIntent != null) {
-                    launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                    startActivity(launchIntent)
-                }
+                // Target app launching removed based on user request to stay on pairing/dashboard page.
             }
         }
     }
