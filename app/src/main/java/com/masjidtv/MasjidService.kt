@@ -166,6 +166,9 @@ class MasjidService : Service() {
                 // 2. HDMI-CEC Standby (Root)
                 Runtime.getRuntime().exec(arrayOf("su", "-c", "echo 'standby 0' | cec-client -s -d 1"))
                 Runtime.getRuntime().exec(arrayOf("su", "-c", "cmd hdmi_control standby"))
+                
+                // 3. Android Intent Sleep
+                Runtime.getRuntime().exec(arrayOf("su", "-c", "am broadcast -a android.intent.action.SCREEN_OFF"))
             } catch (e: Exception) {}
 
             withContext(Dispatchers.Main) {
@@ -237,7 +240,15 @@ class MasjidService : Service() {
                         
                         // Force Screen Off via System Service
                         Runtime.getRuntime().exec(arrayOf("su", "-c", "service call power 1 i32 0 i32 0"))
+                        
+                        // Fallback: If still interactive, send actual POWER button just in case 223 is ignored
+                        Runtime.getRuntime().exec(arrayOf("su", "-c", "input keyevent 26"))
                     } catch (e: Exception) {}
+                } else {
+                    // Even if screen says it's off, ensure it stays that way by maintaining WakeLock off
+                    try {
+                        Runtime.getRuntime().exec(arrayOf("su", "-c", "cmd hdmi_control standby"))
+                    } catch(e: Exception) {}
                 }
                 delay(10000)
             }
@@ -264,18 +275,23 @@ class MasjidService : Service() {
                 Runtime.getRuntime().exec(arrayOf("su", "-c", "cmd hdmi_control one_touch_play"))
 
                 // 3. Wake Keyevents
-                Runtime.getRuntime().exec(arrayOf("su", "-c", "input keyevent 224")) 
+                Runtime.getRuntime().exec(arrayOf("su", "-c", "input keyevent 224")) // WAKEUP
                 Runtime.getRuntime().exec(arrayOf("su", "-c", "input keyevent 82")) // Unlock
+                
+                // 4. Send Wake Intent
+                Runtime.getRuntime().exec(arrayOf("su", "-c", "am broadcast -a android.intent.action.SCREEN_ON"))
             } catch (e: Exception) {}
 
             withContext(Dispatchers.Main) {
-                // 4. WakeLock Acquire
+                // 5. WakeLock Acquire (Extreme Mode)
                 val pm = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
                 val wakeLock = pm.newWakeLock(
-                    android.os.PowerManager.SCREEN_BRIGHT_WAKE_LOCK or android.os.PowerManager.ACQUIRE_CAUSES_WAKEUP,
-                    "MasjidTV:RemoteWake"
+                    android.os.PowerManager.FULL_WAKE_LOCK or 
+                    android.os.PowerManager.ACQUIRE_CAUSES_WAKEUP or 
+                    android.os.PowerManager.ON_AFTER_RELEASE,
+                    "MasjidTV:ExtremeWake"
                 )
-                wakeLock.acquire(10000)
+                wakeLock.acquire(15000)
 
                 // 5. Restore Audio
                 try {
