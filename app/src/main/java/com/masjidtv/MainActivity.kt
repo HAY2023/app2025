@@ -45,6 +45,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var layoutPairing: LinearLayout
     private lateinit var layoutPaired: LinearLayout
     private lateinit var etPairingCode: EditText
+    private lateinit var layoutAutoLaunch: LinearLayout
+    private lateinit var tvCountdown: TextView
+    private lateinit var btnCancelAutoLaunch: Button
+    
+    private var autoLaunchJob: Job? = null
 
     // Supabase
     private val supabaseUrl = "https://dxljqnchxdyhxlppbeip.supabase.co"
@@ -77,11 +82,20 @@ class MainActivity : AppCompatActivity() {
         layoutPairing = findViewById(R.id.layoutPairing)
         layoutPaired = findViewById(R.id.layoutPaired)
         etPairingCode = findViewById(R.id.etPairingCode)
+        layoutAutoLaunch = findViewById(R.id.layoutAutoLaunch)
+        tvCountdown = findViewById(R.id.tvCountdown)
+        btnCancelAutoLaunch = findViewById(R.id.btnCancelAutoLaunch)
 
         val btnSyncCloud = findViewById<Button>(R.id.btnSyncCloud)
         val btnSelectApp = findViewById<Button>(R.id.btnSelectApp)
         val btnPair = findViewById<Button>(R.id.btnPair)
         val btnUnpair = findViewById<Button>(R.id.btnUnpair)
+        
+        btnCancelAutoLaunch.setOnClickListener {
+            autoLaunchJob?.cancel()
+            layoutAutoLaunch.visibility = View.GONE
+            Toast.makeText(this, "تم إلغاء التشغيل التلقائي", Toast.LENGTH_SHORT).show()
+        }
 
         // Check pairing state
         updatePairingUI()
@@ -138,20 +152,26 @@ class MainActivity : AppCompatActivity() {
                 startService(serviceIntent)
             }
             
-            // تأخير 5 ثواني ثم الدخول المباشر
-            tvConnectionStatus.text = "سيتم تشغيل تطبيق القناة بعد 5 ثواني..."
-            tvConnectionStatus.textSize = 22f
-            tvConnectionStatus.setTextColor(android.graphics.Color.YELLOW)
+            // إظهار نافذة العد التنازلي
+            layoutAutoLaunch.visibility = View.VISIBLE
             
-            CoroutineScope(Dispatchers.Main).launch {
-                delay(5000)
-                val targetApp = prefs.getString("APP_PACKAGE", "com.google.android.youtube")
-                val launchIntent = packageManager.getLaunchIntentForPackage(targetApp!!)
-                if (launchIntent != null) {
-                    launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                    startActivity(launchIntent)
-                } else {
-                    Toast.makeText(this@MainActivity, "التطبيق غير مثبت", Toast.LENGTH_SHORT).show()
+            autoLaunchJob = CoroutineScope(Dispatchers.Main).launch {
+                for (i in 5 downTo 1) {
+                    tvCountdown.text = "سيتم تشغيل تطبيق القناة خلال $i ثواني..."
+                    delay(1000)
+                }
+                
+                if (isActive) {
+                    val targetApp = prefs.getString("APP_PACKAGE", "com.google.android.youtube")
+                    val launchIntent = packageManager.getLaunchIntentForPackage(targetApp!!)
+                    if (launchIntent != null) {
+                        launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                        startActivity(launchIntent)
+                        layoutAutoLaunch.visibility = View.GONE
+                    } else {
+                        Toast.makeText(this@MainActivity, "التطبيق المختار غير مثبت", Toast.LENGTH_SHORT).show()
+                        layoutAutoLaunch.visibility = View.GONE
+                    }
                 }
             }
         }
@@ -456,10 +476,16 @@ class MainActivity : AppCompatActivity() {
             appName = pm.getApplicationLabel(info).toString()
         } catch (e: Exception) {}
 
-        if (MasjidAccessibilityService.isServiceActive) {
-            btn.text = "صلاحية الإطفاء مفعلة ✅ - تطبيق: $appName"
+        val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+        val adminComponent = ComponentName(this, TvDeviceAdminReceiver::class.java)
+        val isAdminActive = dpm.isAdminActive(adminComponent)
+
+        if (MasjidAccessibilityService.isServiceActive && isAdminActive) {
+            btn.text = "الحالة: جاهز تماماً ✅ ($appName)"
+            btn.setBackgroundColor(android.graphics.Color.parseColor("#10B981"))
         } else {
-            btn.text = "التطبيق الحالي: $appName - اضغط لاختيار التطبيق أو تفعيل الإطفاء"
+            btn.text = "إعدادات الصلاحيات: $appName (اضغط هنا لتفعيل الإطفاء)"
+            btn.setBackgroundColor(android.graphics.Color.parseColor("#8B5CF6"))
         }
     }
 
@@ -479,17 +505,26 @@ class MainActivity : AppCompatActivity() {
                 updateAppBtnText(btn)
                 Toast.makeText(this, "تم اختيار التطبيق بنجاح", Toast.LENGTH_SHORT).show()
                 
-                // Prompt Accessibility if missing
+                // Check permissions
                 if (!MasjidAccessibilityService.isServiceActive) {
                     val intent = Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
                     startActivity(intent)
-                    Toast.makeText(this, "⚠️ من فضلك فعّل خدمة مساجد (Masjid TV) من الإعدادات لإطفاء الشاشة!", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this, "⚠️ فعّل خدمة مساجد (Accessibility) لإطفاء الشاشة!", Toast.LENGTH_LONG).show()
+                } else {
+                    val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+                    val adminComponent = ComponentName(this, TvDeviceAdminReceiver::class.java)
+                    if (!dpm.isAdminActive(adminComponent)) {
+                        val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN)
+                        intent.putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponent)
+                        intent.putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "نحتاج هذه الصلاحية لإيقاف تشغيل الشاشة تلقائياً")
+                        startActivity(intent)
+                    }
                 }
             }
-            .setNeutralButton("تفعيل صلاحية الإطفاء فقط") { _, _ ->
-                val intent = Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
-                startActivity(intent)
-            }
+        .setNeutralButton("تفعيل خدمات النظام") { _, _ ->
+            val intent = Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
+            startActivity(intent)
+        }
             .setNegativeButton("إلغاء", null)
             .show()
     }
