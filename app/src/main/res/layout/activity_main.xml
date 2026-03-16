@@ -197,30 +197,20 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="📺 تطبيق التلفاز:"
+            android:text="📺 التطبيق الافتراضي للتشغيل الآلي:"
             android:textColor="#BBBBBB"
-            android:textSize="16sp"
+            android:textSize="18sp"
             android:layout_marginBottom="8dp"/>
 
-        <TextView
-            android:id="@+id/tvAppPackage"
-            android:layout_width="350dp"
-            android:layout_height="50dp"
-            android:text="com.google.android.youtube"
-            android:gravity="center"
-            android:textColor="#FFEB3B"
-            android:textSize="18sp"
-            android:background="#333333"
-            android:layout_marginBottom="24dp"/>
-
         <Button
-            android:id="@+id/btnEnableAdmin"
+            android:id="@+id/btnSelectApp"
             android:layout_width="350dp"
-            android:layout_height="50dp"
-            android:text="🔒 تفعيل صلاحية الإطفاء التلقائي"
+            android:layout_height="60dp"
+            android:text="اختيار التطبيق وتفعيل صلاحية الإطفاء"
             android:backgroundTint="#9C27B0"
             android:textColor="#FFFFFF"
-            android:layout_marginBottom="16dp"/>
+            android:textSize="18sp"
+            android:layout_marginBottom="24dp"/>
 
         <!-- ===== حالة الاتصال ===== -->
         <TextView

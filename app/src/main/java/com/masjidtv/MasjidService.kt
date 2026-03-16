@@ -1,0 +1,274 @@
+package com.masjidtv
+
+import android.app.Service
+import android.content.Context
+import android.content.Intent
+import android.graphics.Color
+import android.graphics.PixelFormat
+import android.os.Build
+import android.os.IBinder
+import android.view.Gravity
+import android.view.View
+import android.view.WindowManager
+import android.widget.FrameLayout
+import kotlinx.coroutines.*
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
+import java.text.SimpleDateFormat
+import java.util.*
+
+class MasjidService : Service() {
+
+    private val supabaseUrl = "https://wzcdvxyrbsxicmyfddbz.supabase.co"
+    private val apiKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind6Y2R2eHlyYnN4aWNteWZkZGJ6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDEyMDI3NDcsImV4cCI6MjA1Njc3ODc0N30.r801j00-4hRz5Y-G4T0G5y1uA1U1X2q40k44U-4kP5o" // NOTE: Ensure correct API key
+    private val client = OkHttpClient()
+    private val JSON_TYPE = "application/json; charset=utf-8".toMediaType()
+
+    private var monitorJob: Job? = null
+    private var windowManager: WindowManager? = null
+    private var fakeSleepView: View? = null
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (monitorJob?.isActive != true) {
+            startLiveMonitoring()
+        }
+        return START_STICKY
+    }
+
+    private fun startLiveMonitoring() {
+        monitorJob = CoroutineScope(Dispatchers.IO).launch {
+            while (isActive) {
+                val prefs = getSharedPreferences("MasjidTVPrefs", Context.MODE_PRIVATE)
+                val deviceId = prefs.getString("DEVICE_ID", null)
+                if (deviceId != null) {
+                    performLiveCheck(deviceId)
+                }
+                delay(10000)
+            }
+        }
+    }
+
+    private fun performLiveCheck(deviceId: String) {
+        try {
+            // 1. Update online and awake state
+            val pm = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+            val isAwake = pm.isInteractive && fakeSleepView == null
+            val updateUrl = "$supabaseUrl/rest/v1/tv_settings?id=eq.$deviceId"
+            val body = """{"is_online": true, "is_awake": $isAwake, "last_seen": "${nowUtcIso()}"}""".toRequestBody(JSON_TYPE)
+            val updateReq = Request.Builder()
+                .url(updateUrl).addHeader("apikey", apiKey)
+                .addHeader("Authorization", "Bearer $apiKey")
+                .addHeader("Prefer", "return=minimal")
+                .patch(body).build()
+            client.newCall(updateReq).execute()
+
+            // 2. Poll for pending_command
+            val fetchUrl = "$supabaseUrl/rest/v1/tv_settings?id=eq.$deviceId&select=pending_command"
+            val fetchReq = Request.Builder()
+                .url(fetchUrl).addHeader("apikey", apiKey)
+                .addHeader("Authorization", "Bearer $apiKey").build()
+            
+            val response = client.newCall(fetchReq).execute()
+            val responseData = response.body?.string()
+
+            if (response.isSuccessful && responseData != null) {
+                val jsonArray = JSONArray(responseData)
+                if (jsonArray.length() > 0) {
+                    val setting = jsonArray.getJSONObject(0)
+                    val cmd = setting.optString("pending_command", "")
+                    
+                    if (cmd.isNotEmpty() && cmd != "null") {
+                        executeRemoteCommand(cmd)
+                        clearRemoteCommand(deviceId)
+                    }
+                } else {
+                    // Device deleted from web -> unpair locally
+                    val prefs = getSharedPreferences("MasjidTVPrefs", Context.MODE_PRIVATE)
+                    prefs.edit().clear().apply()
+                    monitorJob?.cancel()
+                    stopSelf()
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun executeRemoteCommand(cmd: String) {
+        CoroutineScope(Dispatchers.Main).launch {
+            try {
+                when (cmd) {
+                    "SLEEP" -> activateFakeSleep()
+                    "WAKE" -> deactivateFakeSleep()
+                    "SYNC" -> {
+                        val intent = Intent(this@MasjidService, MainActivity::class.java)
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                        startActivity(intent)
+                    }
+                    "UP" -> simulateKeyEvent(android.view.KeyEvent.KEYCODE_DPAD_UP)
+                    "DOWN" -> simulateKeyEvent(android.view.KeyEvent.KEYCODE_DPAD_DOWN)
+                    "LEFT" -> simulateKeyEvent(android.view.KeyEvent.KEYCODE_DPAD_LEFT)
+                    "RIGHT" -> simulateKeyEvent(android.view.KeyEvent.KEYCODE_DPAD_RIGHT)
+                    "ENTER" -> simulateKeyEvent(android.view.KeyEvent.KEYCODE_DPAD_CENTER)
+                    "BACK" -> {
+                        if (MasjidAccessibilityService.isServiceActive) {
+                            val i = Intent(MasjidAccessibilityService.ACTION_REMOTE_COMMAND)
+                            i.putExtra(MasjidAccessibilityService.EXTRA_COMMAND, "BACK")
+                            sendBroadcast(i)
+                        } else simulateKeyEvent(android.view.KeyEvent.KEYCODE_BACK)
+                    }
+                    "HOME" -> {
+                        if (MasjidAccessibilityService.isServiceActive) {
+                            val i = Intent(MasjidAccessibilityService.ACTION_REMOTE_COMMAND)
+                            i.putExtra(MasjidAccessibilityService.EXTRA_COMMAND, "HOME")
+                            sendBroadcast(i)
+                        } else {
+                            val startMain = Intent(Intent.ACTION_MAIN)
+                            startMain.addCategory(Intent.CATEGORY_HOME)
+                            startMain.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                            startActivity(startMain)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    private fun activateFakeSleep() {
+        // Mute Audio during Sleep
+        try {
+            val audioManager = getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+            audioManager.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, 0, 0)
+        } catch (e: Exception) {}
+
+        try {
+            // Priority 1: Accessibility Service (Authentic Sleep)
+            if (MasjidAccessibilityService.isServiceActive) {
+                val intent = Intent(MasjidAccessibilityService.ACTION_REMOTE_COMMAND)
+                intent.putExtra(MasjidAccessibilityService.EXTRA_COMMAND, "SLEEP")
+                sendBroadcast(intent)
+                return
+            }
+
+            // Priority 2: Try root sleep command
+            Runtime.getRuntime().exec(arrayOf("su", "-c", "input keyevent 26"))
+        } catch (e: Exception) {
+            // Priority 3: Fake Sleep Overlay
+            if (fakeSleepView == null) {
+                if (android.provider.Settings.canDrawOverlays(this)) {
+                    val params = WindowManager.LayoutParams(
+                        WindowManager.LayoutParams.MATCH_PARENT,
+                        WindowManager.LayoutParams.MATCH_PARENT,
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else WindowManager.LayoutParams.TYPE_PHONE,
+                        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or 
+                                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
+                        PixelFormat.TRANSLUCENT
+                    )
+                    params.screenBrightness = 0f // Set screen brightness to minimum
+                    
+                    val layout = FrameLayout(this)
+                    layout.setBackgroundColor(Color.BLACK) // Pitch black
+
+                    windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+                    windowManager?.addView(layout, params)
+                    fakeSleepView = layout
+                } else {
+                    // Try shell directly
+                    try { Runtime.getRuntime().exec("input keyevent 26") } catch (ex: Exception) { }
+                }
+            }
+        }
+    }
+
+    private fun deactivateFakeSleep() {
+        // Remove Fake Sleep overlay if active
+        if (fakeSleepView != null && windowManager != null) {
+            try { windowManager?.removeView(fakeSleepView) } catch (e: Exception) {}
+            fakeSleepView = null
+        }
+
+        // Unmute Audio during Wake
+        try {
+            val audioManager = getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+            // Restore to a decent volume level (30%)
+            val maxVol = audioManager.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC)
+            audioManager.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, (maxVol * 0.3).toInt(), 0)
+        } catch (e: Exception) {}
+
+        // Priority 1: Accessibility Service check (wake action not directly supported, so relies on WakeLock below)
+        
+        // Priority 2: Try root wake command
+        try {
+            Runtime.getRuntime().exec(arrayOf("su", "-c", "input keyevent 224")) 
+        } catch (e: Exception) {}
+
+        val pm = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+        val wakeLock = pm.newWakeLock(
+            android.os.PowerManager.SCREEN_BRIGHT_WAKE_LOCK or android.os.PowerManager.ACQUIRE_CAUSES_WAKEUP,
+            "MasjidTV:RemoteWake"
+        )
+        wakeLock.acquire(3000)
+
+        // Launch target app
+        val prefs = getSharedPreferences("MasjidTVPrefs", Context.MODE_PRIVATE)
+        val packageToLaunch = prefs.getString("APP_PACKAGE", "com.google.android.youtube")
+        val launchIntent = packageManager.getLaunchIntentForPackage(packageToLaunch!!)
+        if (launchIntent != null) {
+            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            startActivity(launchIntent)
+        }
+    }
+
+    private fun simulateKeyEvent(keyCode: Int) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val inst = android.app.Instrumentation()
+                inst.sendKeyDownUpSync(keyCode)
+            } catch (e: Exception) {
+                try {
+                    val process = Runtime.getRuntime().exec(arrayOf("su", "-c", "input keyevent $keyCode"))
+                    process.waitFor()
+                } catch (e2: Exception) {
+                    try { Runtime.getRuntime().exec("input keyevent $keyCode") } catch (e3: Exception) { }
+                }
+            }
+        }
+    }
+
+    private fun clearRemoteCommand(deviceId: String) {
+        try {
+            val url = "$supabaseUrl/rest/v1/tv_settings?id=eq.$deviceId"
+            val body = """{"pending_command": null}""".toRequestBody(JSON_TYPE)
+            val req = Request.Builder()
+                .url(url).addHeader("apikey", apiKey)
+                .addHeader("Authorization", "Bearer $apiKey")
+                .addHeader("Prefer", "return=minimal")
+                .patch(body).build()
+            client.newCall(req).execute()
+        } catch (e: Exception) {}
+    }
+
+    private fun nowUtcIso(): String {
+        val formatter = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US)
+        formatter.timeZone = TimeZone.getTimeZone("UTC")
+        return formatter.format(Date())
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        monitorJob?.cancel()
+        
+        if (fakeSleepView != null) {
+            windowManager?.removeView(fakeSleepView)
+        }
+    }
+}

@@ -5,8 +5,11 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
+import android.content.pm.PackageManager
+import android.content.pm.ResolveInfo
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.os.Build
 import android.os.Bundle
 import android.view.View
 import android.widget.Button
@@ -36,7 +39,6 @@ class MainActivity : AppCompatActivity() {
     // UI Elements
     private lateinit var tvWakeTime: TextView
     private lateinit var tvSleepTime: TextView
-    private lateinit var tvAppPackage: TextView
     private lateinit var tvConnectionStatus: TextView
     private lateinit var tvDeviceName: TextView
     private lateinit var layoutPairing: LinearLayout
@@ -56,13 +58,19 @@ class MainActivity : AppCompatActivity() {
 
         prefs = getSharedPreferences("MasjidTVPrefs", Context.MODE_PRIVATE)
 
-        // طلب صلاحية الإطفاء التلقائي فور تشغيل التطبيق (مباشرة)
-        promptAdminAccess()
+        // طلب صلاحية الظهور فوق التطبيقات للإطفاء الوهمي (Fake Sleep)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !android.provider.Settings.canDrawOverlays(this)) {
+            val intent = Intent(
+                android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                android.net.Uri.parse("package:$packageName")
+            )
+            Toast.makeText(this, "أرجوك وافق على صلاحية 'الظهور فوق التطبيقات' لإطفاء التلفاز", Toast.LENGTH_LONG).show()
+            startActivityForResult(intent, 1234)
+        }
 
         // Initialize UI
         tvWakeTime = findViewById(R.id.tvWakeTime)
         tvSleepTime = findViewById(R.id.tvSleepTime)
-        tvAppPackage = findViewById(R.id.tvAppPackage)
         tvConnectionStatus = findViewById(R.id.tvConnectionStatus)
         tvDeviceName = findViewById(R.id.tvDeviceName)
         layoutPairing = findViewById(R.id.layoutPairing)
@@ -70,7 +78,7 @@ class MainActivity : AppCompatActivity() {
         etPairingCode = findViewById(R.id.etPairingCode)
 
         val btnSyncCloud = findViewById<Button>(R.id.btnSyncCloud)
-        val btnEnableAdmin = findViewById<Button>(R.id.btnEnableAdmin)
+        val btnSelectApp = findViewById<Button>(R.id.btnSelectApp)
         val btnPair = findViewById<Button>(R.id.btnPair)
         val btnUnpair = findViewById<Button>(R.id.btnUnpair)
 
@@ -110,21 +118,41 @@ class MainActivity : AppCompatActivity() {
             syncWithSupabase()
         }
 
-        // Admin button
-        btnEnableAdmin.setOnClickListener {
-            val componentName = ComponentName(this, TvDeviceAdminReceiver::class.java)
-            val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
-                putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, componentName)
-                putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "يُستخدم هذا الإذن لإطفاء الشاشة تلقائياً.")
-            }
-            startActivity(intent)
+        // Select Target App and Check Accessibility
+        updateAppBtnText(btnSelectApp)
+        btnSelectApp.setOnClickListener {
+            showAppSelectionDialog(btnSelectApp)
         }
 
-        // Auto-sync if paired
+        // Auto-launch the TV App after exactly 5 seconds if already paired
         if (isPaired()) {
             AlarmScheduler.rescheduleAll(this, prefs)
             syncWithSupabase()
-            startLiveMonitoring()
+            
+            // بدء الخدمة المخفية للتواصل الدائم مع الموقع
+            val serviceIntent = Intent(this, MasjidService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(serviceIntent)
+            } else {
+                startService(serviceIntent)
+            }
+            
+            // تأخير 5 ثواني ثم الدخول المباشر
+            tvConnectionStatus.text = "سيتم تشغيل تطبيق القناة بعد 5 ثواني..."
+            tvConnectionStatus.textSize = 22f
+            tvConnectionStatus.setTextColor(android.graphics.Color.YELLOW)
+            
+            CoroutineScope(Dispatchers.Main).launch {
+                delay(5000)
+                val targetApp = prefs.getString("APP_PACKAGE", "com.google.android.youtube")
+                val launchIntent = packageManager.getLaunchIntentForPackage(targetApp!!)
+                if (launchIntent != null) {
+                    launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                    startActivity(launchIntent)
+                } else {
+                    Toast.makeText(this@MainActivity, "التطبيق غير مثبت", Toast.LENGTH_SHORT).show()
+                }
+            }
         }
     }
 
@@ -225,7 +253,14 @@ class MainActivity : AppCompatActivity() {
                         updatePairingUI()
                         Toast.makeText(this@MainActivity, "✅ تم ربط الجهاز بنجاح!", Toast.LENGTH_LONG).show()
                         syncWithSupabase()
-                        startLiveMonitoring()
+                        
+                        // بدء الخدمة المخفية
+                        val serviceIntent = Intent(this@MainActivity, MasjidService::class.java)
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            startForegroundService(serviceIntent)
+                        } else {
+                            startService(serviceIntent)
+                        }
                     }
                 } else {
                     showToast("خطأ في إنشاء الجهاز")
@@ -235,25 +270,6 @@ class MainActivity : AppCompatActivity() {
                 e.printStackTrace()
                 showToast("خطأ: ${e.message}")
             }
-        }
-    }
-
-    private fun promptAdminAccess() {
-        val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
-        val componentName = ComponentName(this, TvDeviceAdminReceiver::class.java)
-        if (!dpm.isAdminActive(componentName)) {
-            AlertDialog.Builder(this)
-                .setTitle("خطوة أخيرة هامة ⚠️")
-                .setMessage("لكي يتمكن التطبيق والموقع من إطفاء شاشة التلفاز تلقائياً، يجب الموافقة على صلاحية 'مشرف الجهاز' في الشاشة التالية.")
-                .setPositiveButton("موافق وتفعيل") { _, _ ->
-                    val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
-                        putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, componentName)
-                        putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "يُستخدم هذا الإذن لإطفاء الشاشة تلقائياً.")
-                    }
-                    startActivity(intent)
-                }
-                .setCancelable(false)
-                .show()
         }
     }
 
@@ -298,167 +314,10 @@ class MainActivity : AppCompatActivity() {
             remove("DEVICE_NAME")
             remove("PAIRING_CODE")
         }.apply()
-
-        liveMonitorJob?.cancel()
+        
+        stopService(Intent(this, MasjidService::class.java))
         updatePairingUI()
         Toast.makeText(this, "تم إلغاء الربط لحذف الجهاز من الموقع", Toast.LENGTH_LONG).show()
-    }
-
-    // ====== Live Monitoring & Control ======
-
-    private var liveMonitorJob: kotlinx.coroutines.Job? = null
-
-    private fun startLiveMonitoring() {
-        if (liveMonitorJob?.isActive == true) return
-        liveMonitorJob = CoroutineScope(Dispatchers.IO).launch {
-            while (true) {
-                if (isPaired()) {
-                    performLiveCheck()
-                }
-                kotlinx.coroutines.delay(10000) // فحص كل 10 ثواني (سريع للتحكم الفوري)
-            }
-        }
-    }
-
-    private fun performLiveCheck() {
-        val deviceId = prefs.getString("DEVICE_ID", null) ?: return
-        try {
-            // 1. تحديث حالة الاتصال بـ Supabase
-            val updateUrl = "$supabaseUrl/rest/v1/tv_settings?id=eq.$deviceId"
-            val body = """{"is_online": true, "last_seen": "${nowUtcIso()}"}""".toRequestBody(JSON_TYPE)
-            val updateReq = Request.Builder()
-                .url(updateUrl)
-                .addHeader("apikey", apiKey)
-                .addHeader("Authorization", "Bearer $apiKey")
-                .addHeader("Prefer", "return=minimal")
-                .patch(body)
-                .build()
-            client.newCall(updateReq).execute()
-
-            // 2. فحص لو كان هناك أمر تحكم (Command)
-            val fetchUrl = "$supabaseUrl/rest/v1/tv_settings?id=eq.$deviceId&select=pending_command"
-            val fetchReq = Request.Builder()
-                .url(fetchUrl)
-                .addHeader("apikey", apiKey)
-                .addHeader("Authorization", "Bearer $apiKey")
-                .build()
-            val response = client.newCall(fetchReq).execute()
-            val responseData = response.body?.string()
-
-            if (response.isSuccessful && responseData != null) {
-                val jsonArray = JSONArray(responseData)
-                if (jsonArray.length() > 0) {
-                    val setting = jsonArray.getJSONObject(0)
-                    val cmd = setting.optString("pending_command", "")
-                    
-                    if (cmd.isNotEmpty() && cmd != "null") {
-                        executeRemoteCommand(cmd)
-                        clearRemoteCommand(deviceId)
-                    }
-                } else {
-                    // الجهاز غير موجود في الموقع، إذن تم مسحه!
-                    // يجب مسح الربط محلياً أيضاً
-                    CoroutineScope(Dispatchers.Main).launch {
-                        unpairDeviceLocalOnly()
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            e.printStackTrace() // تجاهل الأخطاء المؤقتة للشبكة
-        }
-    }
-
-    private fun executeRemoteCommand(cmd: String) {
-        CoroutineScope(Dispatchers.Main).launch {
-            try {
-                when (cmd) {
-                    "SLEEP" -> {
-                        val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
-                        val componentName = ComponentName(this@MainActivity, TvDeviceAdminReceiver::class.java)
-                        if (dpm.isAdminActive(componentName)) {
-                            dpm.lockNow()
-                            Toast.makeText(this@MainActivity, "تم تلقي أمر إطفاء الشاشة 🌙", Toast.LENGTH_SHORT).show()
-                        } else {
-                            Toast.makeText(this@MainActivity, "صلاحية الإطفاء غير مفعلة!", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                    "WAKE" -> {
-                        val pm = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
-                        val wakeLock = pm.newWakeLock(
-                            android.os.PowerManager.SCREEN_BRIGHT_WAKE_LOCK or android.os.PowerManager.ACQUIRE_CAUSES_WAKEUP,
-                            "MasjidTV:RemoteWake"
-                        )
-                        wakeLock.acquire(3000)
-
-                        val packageToLaunch = prefs.getString("APP_PACKAGE", "com.google.android.youtube")
-                        val launchIntent = packageManager.getLaunchIntentForPackage(packageToLaunch!!)
-                        if (launchIntent != null) {
-                            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                            startActivity(launchIntent)
-                            Toast.makeText(this@MainActivity, "تم تلقي أمر تشغيل الشاشة ☀️", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                    "SYNC" -> {
-                        syncWithSupabase()
-                    }
-                    "UP" -> simulateKeyEvent(android.view.KeyEvent.KEYCODE_DPAD_UP)
-                    "DOWN" -> simulateKeyEvent(android.view.KeyEvent.KEYCODE_DPAD_DOWN)
-                    "LEFT" -> simulateKeyEvent(android.view.KeyEvent.KEYCODE_DPAD_LEFT)
-                    "RIGHT" -> simulateKeyEvent(android.view.KeyEvent.KEYCODE_DPAD_RIGHT)
-                    "ENTER" -> simulateKeyEvent(android.view.KeyEvent.KEYCODE_DPAD_CENTER)
-                    "BACK" -> simulateKeyEvent(android.view.KeyEvent.KEYCODE_BACK)
-                    "HOME" -> {
-                        val startMain = Intent(Intent.ACTION_MAIN)
-                        startMain.addCategory(Intent.CATEGORY_HOME)
-                        startMain.flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                        startActivity(startMain)
-                    }
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-    }
-
-    private fun simulateKeyEvent(keyCode: Int) {
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                // الطريقة الأولى: استخدام الروت (Root) إذا كان التلفاز مكسور الحماية
-                // هذه هي الطريقة الوحيدة المؤكدة للتحكم في التطبيقات الأخرى مثل يوتيوب
-                val process = Runtime.getRuntime().exec(arrayOf("su", "-c", "input keyevent $keyCode"))
-                process.waitFor()
-            } catch (e: Exception) {
-                // الطريقة الثانية: الأوامر العادية الشيل (نادراً ما تعمل بدون روت)
-                try {
-                    Runtime.getRuntime().exec("input keyevent $keyCode")
-                } catch (e2: Exception) {
-                    // الطريقة الثالثة: مفاتيح داخل التطبيق نفسه
-                    try {
-                        val inst = android.app.Instrumentation()
-                        inst.sendKeyDownUpSync(keyCode)
-                    } catch (e3: Exception) {
-                        e3.printStackTrace()
-                    }
-                }
-            }
-        }
-    }
-
-    private fun clearRemoteCommand(deviceId: String) {
-        try {
-            val url = "$supabaseUrl/rest/v1/tv_settings?id=eq.$deviceId"
-            val body = """{"pending_command": null}""".toRequestBody(JSON_TYPE)
-            val req = Request.Builder()
-                .url(url)
-                .addHeader("apikey", apiKey)
-                .addHeader("Authorization", "Bearer $apiKey")
-                .addHeader("Prefer", "return=minimal")
-                .patch(body)
-                .build()
-            client.newCall(req).execute()
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
     }
 
     // ====== Sync System ======
@@ -551,7 +410,10 @@ class MainActivity : AppCompatActivity() {
     private fun updateUI() {
         tvWakeTime.text = prefs.getString("WAKE_TIME", "00:00")
         tvSleepTime.text = prefs.getString("SLEEP_TIME", "00:00")
-        tvAppPackage.text = prefs.getString("APP_PACKAGE", "com.google.android.youtube")
+        val btnSelectApp = findViewById<Button>(R.id.btnSelectApp)
+        if (btnSelectApp != null) {
+            updateAppBtnText(btnSelectApp)
+        }
     }
 
     private fun updateConnectionStatus() {
@@ -579,9 +441,60 @@ class MainActivity : AppCompatActivity() {
         return formatter.format(Date())
     }
 
+    override fun onResume() {
+        super.onResume()
+        val btnSelectApp = findViewById<Button>(R.id.btnSelectApp)
+        if (btnSelectApp != null) updateAppBtnText(btnSelectApp)
+    }
+
+    private fun updateAppBtnText(btn: Button) {
+        val currentApp = prefs.getString("APP_PACKAGE", "com.google.android.youtube")
+        var appName = "يوتيوب (افتراضي)"
+        try {
+            val pm = packageManager
+            val info = pm.getApplicationInfo(currentApp!!, 0)
+            appName = pm.getApplicationLabel(info).toString()
+        } catch (e: Exception) {}
+
+        if (MasjidAccessibilityService.isServiceActive) {
+            btn.text = "صلاحية الإطفاء مفعلة ✅ - تطبيق: $appName"
+        } else {
+            btn.text = "التطبيق الحالي: $appName - اضغط لاختيار التطبيق أو تفعيل الإطفاء"
+        }
+    }
+
+    private fun showAppSelectionDialog(btn: Button) {
+        val i = Intent(Intent.ACTION_MAIN, null)
+        i.addCategory(Intent.CATEGORY_LAUNCHER)
+        val apps = packageManager.queryIntentActivities(i, 0)
+        
+        val appNames = apps.map { it.loadLabel(packageManager).toString() }.toTypedArray()
+        val appPackages = apps.map { it.activityInfo.packageName }.toTypedArray()
+
+        AlertDialog.Builder(this)
+            .setTitle("اختر التطبيق المفضل")
+            .setItems(appNames) { _, which ->
+                val selectedPkg = appPackages[which]
+                prefs.edit().putString("APP_PACKAGE", selectedPkg).apply()
+                updateAppBtnText(btn)
+                Toast.makeText(this, "تم اختيار التطبيق بنجاح", Toast.LENGTH_SHORT).show()
+                
+                // Prompt Accessibility if missing
+                if (!MasjidAccessibilityService.isServiceActive) {
+                    val intent = Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                    startActivity(intent)
+                    Toast.makeText(this, "⚠️ من فضلك فعّل خدمة مساجد (Masjid TV) من الإعدادات لإطفاء الشاشة!", Toast.LENGTH_LONG).show()
+                }
+            }
+            .setNeutralButton("تفعيل صلاحية الإطفاء فقط") { _, _ ->
+                val intent = Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                startActivity(intent)
+            }
+            .setNegativeButton("إلغاء", null)
+            .show()
+    }
+
     override fun onDestroy() {
         super.onDestroy()
-        liveMonitorJob?.cancel()
-        updateOnlineStatus(false)
     }
 }
