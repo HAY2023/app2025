@@ -164,7 +164,7 @@ class MainActivity : AppCompatActivity() {
             true
         }
 
-        // Auto-launch the TV App after exactly 5 seconds if already paired
+        // Start service and sync if already paired
         if (isPaired()) {
             AlarmScheduler.rescheduleAll(this, prefs)
             syncWithSupabase()
@@ -175,24 +175,6 @@ class MainActivity : AppCompatActivity() {
                 startForegroundService(serviceIntent)
             } else {
                 startService(serviceIntent)
-            }
-            
-            // تأخير 5 ثواني ثم الدخول المباشر
-            tvConnectionStatus.text = "سيتم تشغيل تطبيق القناة بعد 5 ثواني..."
-            tvConnectionStatus.textSize = 22f
-            tvConnectionStatus.setTextColor(android.graphics.Color.YELLOW)
-            btnCancelAutoLaunch.visibility = View.VISIBLE
-            
-            autoLaunchJob = CoroutineScope(Dispatchers.Main).launch {
-                delay(5000)
-                val targetApp = prefs.getString("APP_PACKAGE", "com.google.android.youtube")
-                val launchIntent = packageManager.getLaunchIntentForPackage(targetApp!!)
-                if (launchIntent != null) {
-                    launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                    startActivity(launchIntent)
-                } else {
-                    Toast.makeText(this@MainActivity, "التطبيق غير مثبت", Toast.LENGTH_SHORT).show()
-                }
             }
         }
     }
