@@ -149,6 +149,8 @@ class MasjidService : Service() {
     }
 
     private fun activateFakeSleep() {
+        val powerManager = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+        
         // Mute Audio during Sleep
         try {
             val audioManager = getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
@@ -167,24 +169,26 @@ class MasjidService : Service() {
             } catch (e: Exception) {}
 
             withContext(Dispatchers.Main) {
-                try {
-                    // 3. Device Admin Lock (Highly effective)
-                    val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
-                    val componentName = android.content.ComponentName(this@MasjidService, TvDeviceAdminReceiver::class.java)
-                    if (dpm.isAdminActive(componentName)) {
-                        dpm.lockNow()
-                    }
+                if (powerManager.isInteractive) {
+                    try {
+                        // 3. Device Admin Lock (Highly effective)
+                        val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
+                        val componentName = android.content.ComponentName(this@MasjidService, TvDeviceAdminReceiver::class.java)
+                        if (dpm.isAdminActive(componentName)) {
+                            dpm.lockNow()
+                        }
 
-                    // 4. Accessibility Service (System Lock)
-                    if (MasjidAccessibilityService.isServiceActive) {
-                        val intent = Intent(MasjidAccessibilityService.ACTION_REMOTE_COMMAND)
-                        intent.putExtra(MasjidAccessibilityService.EXTRA_COMMAND, "SLEEP")
-                        sendBroadcast(intent)
-                    }
+                        // 4. Accessibility Service (System Lock)
+                        if (MasjidAccessibilityService.isServiceActive) {
+                            val intent = Intent(MasjidAccessibilityService.ACTION_REMOTE_COMMAND)
+                            intent.putExtra(MasjidAccessibilityService.EXTRA_COMMAND, "SLEEP")
+                            sendBroadcast(intent)
+                        }
 
-                    // 5. Root Keyevent Sleep
-                    Runtime.getRuntime().exec(arrayOf("su", "-c", "input keyevent 26"))
-                } catch (e: Exception) {}
+                        // 5. Root Keyevent Sleep
+                        Runtime.getRuntime().exec(arrayOf("su", "-c", "input keyevent 26"))
+                    } catch (e: Exception) {}
+                }
 
                 // 6. Final Fallback: Fake Sleep Overlay (Black screen + Min Brightness)
                 if (fakeSleepView == null) {
@@ -213,28 +217,29 @@ class MasjidService : Service() {
                 
                 // 7. Start "Insane Mode" Enforcement Loop
                 isSleeping = true
-                startPowerEnforcement()
+                startPowerEnforcement(powerManager)
             }
         }
     }
 
-    private fun startPowerEnforcement() {
+    private fun startPowerEnforcement(powerManager: android.os.PowerManager) {
         powerEnforcerJob?.cancel()
         powerEnforcerJob = CoroutineScope(Dispatchers.IO).launch {
             while (isActive && isSleeping) {
-                try {
-                    // Constant Re-locking and CEC Standby every 30 seconds
-                    Runtime.getRuntime().exec(arrayOf("su", "-c", "input keyevent 26"))
-                    Runtime.getRuntime().exec(arrayOf("su", "-c", "cmd hdmi_control standby"))
-                    
-                    // Kill foreground tasks that might stay awake (like some players)
-                    Runtime.getRuntime().exec(arrayOf("su", "-c", "am kill-all"))
-                    
-                    // Force Screen Off via System Service
-                    Runtime.getRuntime().exec(arrayOf("su", "-c", "service call power 1 i32 0 i32 0"))
-                    
-                } catch (e: Exception) {}
-                delay(30000)
+                if (powerManager.isInteractive) {
+                    try {
+                        // Constant Re-locking and CEC Standby every 10 seconds if screen refuses to sleep
+                        Runtime.getRuntime().exec(arrayOf("su", "-c", "input keyevent 26"))
+                        Runtime.getRuntime().exec(arrayOf("su", "-c", "cmd hdmi_control standby"))
+                        
+                        // Kill foreground tasks that might stay awake (like some players)
+                        Runtime.getRuntime().exec(arrayOf("su", "-c", "am kill-all"))
+                        
+                        // Force Screen Off via System Service
+                        Runtime.getRuntime().exec(arrayOf("su", "-c", "service call power 1 i32 0 i32 0"))
+                    } catch (e: Exception) {}
+                }
+                delay(10000)
             }
         }
     }
