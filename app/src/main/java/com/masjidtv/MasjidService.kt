@@ -102,27 +102,27 @@ class MasjidService : Service() {
     private fun executeRemoteCommand(cmd: String) {
         CoroutineScope(Dispatchers.Main).launch {
             try {
-                when (cmd) {
-                    "SLEEP" -> activateFakeSleep()
-                    "WAKE" -> deactivateFakeSleep()
-                    "SYNC" -> {
+                when {
+                    cmd == "SLEEP" -> activateFakeSleep()
+                    cmd == "WAKE" -> deactivateFakeSleep()
+                    cmd == "SYNC" -> {
                         val intent = Intent(this@MasjidService, MainActivity::class.java)
                         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                         startActivity(intent)
                     }
-                    "UP" -> simulateKeyEvent(android.view.KeyEvent.KEYCODE_DPAD_UP)
-                    "DOWN" -> simulateKeyEvent(android.view.KeyEvent.KEYCODE_DPAD_DOWN)
-                    "LEFT" -> simulateKeyEvent(android.view.KeyEvent.KEYCODE_DPAD_LEFT)
-                    "RIGHT" -> simulateKeyEvent(android.view.KeyEvent.KEYCODE_DPAD_RIGHT)
-                    "ENTER" -> simulateKeyEvent(android.view.KeyEvent.KEYCODE_DPAD_CENTER)
-                    "BACK" -> {
+                    cmd == "UP" -> simulateKeyEvent(android.view.KeyEvent.KEYCODE_DPAD_UP)
+                    cmd == "DOWN" -> simulateKeyEvent(android.view.KeyEvent.KEYCODE_DPAD_DOWN)
+                    cmd == "LEFT" -> simulateKeyEvent(android.view.KeyEvent.KEYCODE_DPAD_LEFT)
+                    cmd == "RIGHT" -> simulateKeyEvent(android.view.KeyEvent.KEYCODE_DPAD_RIGHT)
+                    cmd == "ENTER" -> simulateKeyEvent(android.view.KeyEvent.KEYCODE_DPAD_CENTER)
+                    cmd == "BACK" -> {
                         if (MasjidAccessibilityService.isServiceActive) {
                             val i = Intent(MasjidAccessibilityService.ACTION_REMOTE_COMMAND)
                             i.putExtra(MasjidAccessibilityService.EXTRA_COMMAND, "BACK")
                             sendBroadcast(i)
                         } else simulateKeyEvent(android.view.KeyEvent.KEYCODE_BACK)
                     }
-                    "HOME" -> {
+                    cmd == "HOME" -> {
                         if (MasjidAccessibilityService.isServiceActive) {
                             val i = Intent(MasjidAccessibilityService.ACTION_REMOTE_COMMAND)
                             i.putExtra(MasjidAccessibilityService.EXTRA_COMMAND, "HOME")
@@ -134,6 +134,10 @@ class MasjidService : Service() {
                             startActivity(startMain)
                         }
                     }
+                    cmd == "VOL_UP" -> changeVolume(1)
+                    cmd == "VOL_DOWN" -> changeVolume(-1)
+                    cmd == "MUTE" -> changeVolume(0, mute = true)
+                    cmd == "UNMUTE" -> changeVolume(0, unmute = true)
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -242,6 +246,24 @@ class MasjidService : Service() {
                 }
             }
         }
+    }
+
+    private fun changeVolume(direction: Int, mute: Boolean = false, unmute: Boolean = false) {
+        try {
+            val audioManager = getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+            if (mute) {
+                audioManager.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, 0, 0)
+            } else if (unmute) {
+                val maxVol = audioManager.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC)
+                audioManager.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, (maxVol * 0.3).toInt(), 0)
+            } else {
+                if (direction > 0) {
+                    audioManager.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC, android.media.AudioManager.ADJUST_RAISE, android.media.AudioManager.FLAG_SHOW_UI)
+                } else {
+                    audioManager.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC, android.media.AudioManager.ADJUST_LOWER, android.media.AudioManager.FLAG_SHOW_UI)
+                }
+            }
+        } catch (e: Exception) {}
     }
 
     private fun clearRemoteCommand(deviceId: String) {
