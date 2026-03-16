@@ -33,7 +33,7 @@ class OverlayManager(private val context: Context) {
 
                 // Create a simple custom layout for the message
                 val textView = TextView(context).apply {
-                    text = "🕌 $text"
+                    this.text = "🕌 $text"
                     textSize = 28f
                     setTextColor(Color.WHITE)
                     setBackgroundColor(Color.parseColor("#CC000000")) // Semi-transparent black

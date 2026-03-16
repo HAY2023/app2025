@@ -23,6 +23,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.delay
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -302,7 +303,6 @@ class MainActivity : AppCompatActivity() {
             remove("PAIRING_CODE")
         }.apply()
 
-        liveMonitorJob?.cancel()
         updatePairingUI()
         Toast.makeText(this, "تم إلغاء الربط", Toast.LENGTH_SHORT).show()
     }
