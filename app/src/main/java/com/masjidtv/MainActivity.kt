@@ -124,6 +124,10 @@ class MainActivity : AppCompatActivity() {
         btnSelectApp.setOnClickListener {
             showAppSelectionDialog(btnSelectApp)
         }
+        btnSelectApp.setOnLongClickListener {
+            showTestRemoteDialog()
+            true
+        }
 
         // Auto-launch the TV App after exactly 5 seconds if already paired
         if (isPaired()) {
@@ -255,7 +259,13 @@ class MainActivity : AppCompatActivity() {
                         Toast.makeText(this@MainActivity, "✅ تم ربط الجهاز بنجاح!", Toast.LENGTH_LONG).show()
                         syncWithSupabase()
                         
-                        // بدء الخدمة المخفية
+                        // تفعيل ميزة "جهاز التحكم التجريبي" عند النقر الطويل على زر الإعدادات
+            btnSelectApp.setOnLongClickListener {
+                showTestRemoteDialog()
+                true
+            }
+            
+            // إظهار نافذة العد التنازلي
                         val serviceIntent = Intent(this@MainActivity, MasjidService::class.java)
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                             startForegroundService(serviceIntent)
@@ -494,7 +504,45 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
+    private fun showTestRemoteDialog() {
+        val dialogView = layoutInflater.inflate(R.layout.dialog_remote, null)
+        val dialog = AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_NoActionBar_Fullscreen)
+            .setView(dialogView)
+            .create()
+
+        dialogView.findViewById<Button>(R.id.btnUp).setOnClickListener { sendTestCmd("UP") }
+        dialogView.findViewById<Button>(R.id.btnDown).setOnClickListener { sendTestCmd("DOWN") }
+        dialogView.findViewById<Button>(R.id.btnLeft).setOnClickListener { sendTestCmd("LEFT") }
+        dialogView.findViewById<Button>(R.id.btnRight).setOnClickListener { sendTestCmd("RIGHT") }
+        dialogView.findViewById<Button>(R.id.btnEnter).setOnClickListener { sendTestCmd("ENTER") }
+        dialogView.findViewById<Button>(R.id.btnBack).setOnClickListener { sendTestCmd("BACK") }
+        dialogView.findViewById<Button>(R.id.btnHome).setOnClickListener { sendTestCmd("HOME") }
+        dialogView.findViewById<Button>(R.id.btnCloseRemote).setOnClickListener { dialog.dismiss() }
+
+        dialog.show()
+    }
+
+    private fun sendTestCmd(cmd: String) {
+        val deviceId = prefs.getString("DEVICE_ID", null) ?: return
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val url = "$supabaseUrl/rest/v1/tv_settings?id=eq.$deviceId"
+                val body = """{"pending_command": "$cmd"}""".toRequestBody(JSON_TYPE)
+                val req = Request.Builder()
+                    .url(url)
+                    .addHeader("apikey", apiKey)
+                    .addHeader("Authorization", "Bearer $apiKey")
+                    .patch(body).build()
+                client.newCall(req).execute()
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@MainActivity, "تم إرسال أمر: $cmd", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {}
+        }
+    }
+
     override fun onDestroy() {
         super.onDestroy()
+        autoLaunchJob?.cancel()
     }
 }
