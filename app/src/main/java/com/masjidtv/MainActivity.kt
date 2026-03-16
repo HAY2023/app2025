@@ -91,18 +91,8 @@ class MainActivity : AppCompatActivity() {
         val btnToggleLoginMode = findViewById<TextView>(R.id.btnToggleLoginMode)
         val btnBackToLogin = findViewById<TextView>(R.id.btnBackToLogin)
         val btnSyncCloud = findViewById<Button>(R.id.btnSyncCloud)
-        val btnSelectApp = findViewById<Button>(R.id.btnSelectApp)
         val btnPair = findViewById<Button>(R.id.btnPair)
         val btnUnpair = findViewById<Button>(R.id.btnUnpair)
-        val btnCancelAutoLaunch = findViewById<Button>(R.id.btnCancelAutoLaunch)
-
-        btnCancelAutoLaunch.setOnClickListener {
-            autoLaunchJob?.cancel()
-            btnCancelAutoLaunch.visibility = View.GONE
-            tvConnectionStatus.text = "تم إيقاف التشغيل التلقائي. يمكنك المزامنة يدوياً."
-            tvConnectionStatus.setTextColor(android.graphics.Color.WHITE)
-            tvConnectionStatus.textSize = 14f
-        }
 
         // Login Logic
         btnLogin.setOnClickListener {
@@ -157,12 +147,7 @@ class MainActivity : AppCompatActivity() {
             syncWithSupabase()
         }
 
-        updateAppBtnText(btnSelectApp)
-        btnSelectApp.setOnClickListener { showAppSelectionDialog(btnSelectApp) }
-        btnSelectApp.setOnLongClickListener {
-            showTestRemoteDialog()
-            true
-        }
+
 
         // Start service and sync if already paired
         if (isPaired()) {
@@ -511,10 +496,6 @@ class MainActivity : AppCompatActivity() {
     private fun updateUI() {
         tvWakeTime.text = prefs.getString("WAKE_TIME", "00:00")
         tvSleepTime.text = prefs.getString("SLEEP_TIME", "00:00")
-        val btnSelectApp = findViewById<Button>(R.id.btnSelectApp)
-        if (btnSelectApp != null) {
-            updateAppBtnText(btnSelectApp)
-        }
     }
 
     private fun updateConnectionStatus() {
@@ -544,79 +525,6 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        val btnSelectApp = findViewById<Button>(R.id.btnSelectApp)
-        if (btnSelectApp != null) updateAppBtnText(btnSelectApp)
-    }
-
-    private fun updateAppBtnText(btn: Button) {
-        val currentApp = prefs.getString("APP_PACKAGE", "com.google.android.youtube")
-        var appName = "يوتيوب"
-        try {
-            val pm = packageManager
-            val info = pm.getApplicationInfo(currentApp!!, 0)
-            appName = pm.getApplicationLabel(info).toString()
-        } catch (e: Exception) {}
-
-        val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
-        val adminName = android.content.ComponentName(this, TvDeviceAdminReceiver::class.java)
-        val isAdmin = dpm.isAdminActive(adminName)
-        val isAcc = MasjidAccessibilityService.isServiceActive
-
-        when {
-            isAdmin && isAcc -> {
-                btn.text = "نظام التحكم مفعل بالكامل ✅ ($appName)"
-                btn.setBackgroundColor(android.graphics.Color.parseColor("#059669"))
-            }
-            isAdmin || isAcc -> {
-                btn.text = "صلاحيات جزئية.. اضغط للإكمال ⚠️ ($appName)"
-                btn.setBackgroundColor(android.graphics.Color.parseColor("#D97706"))
-            }
-            else -> {
-                btn.text = "إعدادات القناة والتحكم ⚙️ ($appName)"
-                btn.setBackgroundColor(android.graphics.Color.parseColor("#8B5CF6"))
-            }
-        }
-    }
-
-    private fun showAppSelectionDialog(btn: Button) {
-        val i = Intent(Intent.ACTION_MAIN, null)
-        i.addCategory(Intent.CATEGORY_LAUNCHER)
-        val apps = packageManager.queryIntentActivities(i, 0)
-        
-        val appNames = apps.map { it.loadLabel(packageManager).toString() }.toTypedArray()
-        val appPackages = apps.map { it.activityInfo.packageName }.toTypedArray()
-
-        AlertDialog.Builder(this)
-            .setTitle("إعدادات التحكم والتطبيق")
-            .setItems(appNames) { _, which ->
-                val selectedPkg = appPackages[which]
-                val selectedName = appNames[which]
-                
-                AlertDialog.Builder(this)
-                    .setTitle(selectedName)
-                    .setMessage("ماذا تريد أن تفعل؟")
-                    .setPositiveButton("اختيار كافتراضي") { _, _ ->
-                        prefs.edit().putString("APP_PACKAGE", selectedPkg).apply()
-                        updateAppBtnText(btn)
-                        checkAndRequestPermissions()
-                    }
-                    .setNeutralButton("تشغيل للتجربة الآن 🚀") { _, _ ->
-                        val launchIntent = packageManager.getLaunchIntentForPackage(selectedPkg)
-                        if (launchIntent != null) {
-                            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            startActivity(launchIntent)
-                        } else {
-                            Toast.makeText(this, "فشل تشغيل التطبيق", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                    .setNegativeButton("رجوع", null)
-                    .show()
-            }
-            .setNeutralButton("تفعيل الصلاحيات فقط") { _, _ ->
-                checkAndRequestPermissions()
-            }
-            .setNegativeButton("إلغاء", null)
-            .show()
     }
 
     private fun checkAndRequestPermissions() {

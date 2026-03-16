@@ -10,7 +10,8 @@
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:gravity="center_horizontal"
-        android:padding="32dp">
+        android:padding="32dp"
+        android:animateLayoutChanges="true">
 
         <!-- Header -->
         <LinearLayout
@@ -104,8 +105,10 @@
                     android:layout_height="60dp"
                     android:text="دخول"
                     android:textSize="18sp"
-                    android:backgroundTint="#38BDF8"
-                    android:textColor="#0A0E17"
+                    android:backgroundTint="#0284C7"
+                    android:textColor="#FFFFFF"
+                    android:focusable="true"
+                    android:focusableInTouchMode="false"
                     app:cornerRadius="16dp" />
 
                 <TextView
@@ -169,8 +172,9 @@
                     android:layout_height="60dp"
                     android:text="تفعيل الرابط"
                     android:textSize="18sp"
-                    android:backgroundTint="#38BDF8"
-                    android:textColor="#0A0E17"
+                    android:backgroundTint="#0284C7"
+                    android:textColor="#FFFFFF"
+                    android:focusable="true"
                     app:cornerRadius="16dp" />
 
                 <TextView
@@ -192,6 +196,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
+            android:animateLayoutChanges="true"
             android:visibility="gone">
 
             <androidx.cardview.widget.CardView
@@ -233,25 +238,17 @@
                         android:layout_height="wrap_content"
                         android:orientation="horizontal">
 
-                        <Button
-                            android:id="@+id/btnCancelAutoLaunch"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="إيقاف العد التنازلي ⏸"
-                            android:textSize="12sp"
-                            android:backgroundTint="#F59E0B"
-                            android:textColor="#000000"
-                            android:visibility="gone"
-                            android:layout_marginEnd="8dp"
-                            app:cornerRadius="12dp" />
+
 
                         <Button
                             android:id="@+id/btnUnpair"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="قطع الاتصال ❌"
-                            android:textSize="12sp"
-                            android:backgroundTint="#EF4444"
+                            android:textSize="14sp"
+                            android:backgroundTint="#B91C1C"
+                            android:textColor="#FFFFFF"
+                            android:focusable="true"
                             app:cornerRadius="12dp" />
                     </LinearLayout>
                 </LinearLayout>
@@ -337,22 +334,17 @@
             <Button
                 android:id="@+id/btnSyncCloud"
                 android:layout_width="match_parent"
-                android:layout_height="64dp"
-                android:text="☁️ مزامنة فورية مع السحابة"
-                android:textSize="18sp"
-                android:backgroundTint="#0EA5E9"
-                app:cornerRadius="18dp"
-                android:layout_marginBottom="20dp" />
+                android:layout_height="68dp"
+                android:text="☁️ تحديث الإعدادات من السحابة"
+                android:textSize="20sp"
+                android:backgroundTint="#0284C7"
+                android:textColor="#FFFFFF"
+                android:focusable="true"
+                android:elevation="8dp"
+                app:cornerRadius="20dp"
+                android:layout_marginBottom="24dp" />
 
-            <Button
-                android:id="@+id/btnSelectApp"
-                android:layout_width="match_parent"
-                android:layout_height="64dp"
-                android:text="📺 إعدادات القناة والتحكم"
-                android:textSize="18sp"
-                android:backgroundTint="#8B5CF6"
-                app:cornerRadius="18dp"
-                android:layout_marginBottom="40dp" />
+
 
         </LinearLayout>
 
