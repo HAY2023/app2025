@@ -1,7 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#1B5E20</color>
-    <color name="colorPrimary">#1B5E20</color>
-    <color name="colorPrimaryDark">#0D3311</color>
-    <color name="colorAccent">#03A9F4</color>
+    <color name="ic_launcher_background">#064E3B</color>
+    <color name="colorPrimary">#064E3B</color>
+    <color name="colorPrimaryDark">#022C22</color>
+    <color name="colorAccent">#D97706</color>
+    
+    <!-- Luxury Islamic Palette -->
+    <color name="emerald_deep">#064E3B</color>
+    <color name="emerald_darker">#022C22</color>
+    <color name="emerald_surface">#0F172A</color>
+    <color name="gold_primary">#D97706</color>
+    <color name="gold_light">#F59E0B</color>
+    <color name="text_high">#F8FAFC</color>
+    <color name="text_med">#CBD5E1</color>
+    <color name="text_low">#94A3B8</color>
+    
+    <color name="transparent_gold">#22D97706</color>
+    <color name="transparent_emerald">#DD022C22</color>
 </resources>

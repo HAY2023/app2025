@@ -78,6 +78,9 @@ class AlarmReceiver : BroadcastReceiver() {
 
             // Reschedule for tomorrow
             AlarmScheduler.rescheduleAll(context, prefs)
+        } else if (action == "REFRESH_SCHEDULE") {
+            Log.d("MasjidTV", "Midnight Refresh triggered!")
+            AlarmScheduler.rescheduleAll(context, prefs)
         }
     }
 }

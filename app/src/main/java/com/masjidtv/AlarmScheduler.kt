@@ -18,40 +18,63 @@ object AlarmScheduler {
     fun rescheduleAll(context: Context, prefs: SharedPreferences) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
 
-        // إلغاء جميع المنبهات القديمة قبل وضع الجديدة (لتفادي التداخل)
-        for (i in 0..50) {
+        // Cancel existing alarms
+        for (i in 0..200) {
             cancelAlarm(context, alarmManager, ACTION_WAKE_UP_TV, i)
-            cancelAlarm(context, alarmManager, ACTION_SLEEP_TV, i + 100)
+            cancelAlarm(context, alarmManager, ACTION_SLEEP_TV, i + 1000)
         }
 
         val schedulesJson = prefs.getString("SCHEDULES_JSON", null)
+        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
         
-        if (schedulesJson != null && schedulesJson.length > 5) {
+        var foundToday = false
+
+        if (!schedulesJson.isNullOrBlank() && schedulesJson.length > 5) {
             try {
-                // استخراج الأوقات المتعددة التي تم جلبها من السحابة (والتي رُفعت بـ CSV)
                 val array = JSONArray(schedulesJson)
                 for (i in 0 until array.length()) {
                     val obj = array.getJSONObject(i)
-                    val wakeStr = obj.optString("wake", "")
-                    val sleepStr = obj.optString("sleep", "")
+                    val dateStr = obj.optString("date", "")
                     
-                    if (wakeStr.isNotEmpty()) {
-                        scheduleExactTime(context, alarmManager, wakeStr, ACTION_WAKE_UP_TV, i)
-                    }
-                    if (sleepStr.isNotEmpty()) {
-                        scheduleExactTime(context, alarmManager, sleepStr, ACTION_SLEEP_TV, i + 100)
+                    if (dateStr == todayStr) {
+                        val wakeStr = obj.optString("wake", "")
+                        val sleepStr = obj.optString("sleep", "")
+                        
+                        if (wakeStr.isNotEmpty()) {
+                            scheduleExactTime(context, alarmManager, wakeStr, ACTION_WAKE_UP_TV, 0)
+                        }
+                        if (sleepStr.isNotEmpty()) {
+                            scheduleExactTime(context, alarmManager, sleepStr, ACTION_SLEEP_TV, 1000)
+                        }
+                        foundToday = true
+                        Log.d(TAG, "Found specific schedule for today ($todayStr): $wakeStr - $sleepStr")
+                        break
                     }
                 }
-                Log.d(TAG, "Scheduled multiple times from JSON!")
             } catch (e: Exception) {
-                e.printStackTrace()
-                // في حال وجود خطأ في الـ JSON، استخدم الوقت المفرد التقليدي
-                fallbackSingleSchedule(context, alarmManager, prefs)
+                Log.e(TAG, "Error parsing yearly schedule JSON", e)
             }
-        } else {
-            // النظام القديم (وقت تشغيل واحد وإطفاء واحد)
+        }
+
+        if (!foundToday) {
+            Log.d(TAG, "No specific schedule found for $todayStr, using defaults.")
             fallbackSingleSchedule(context, alarmManager, prefs)
         }
+        
+        // Also schedule a refresh at midnight to handle date transition
+        scheduleMidnightRefresh(context, alarmManager)
+    }
+
+    private fun scheduleMidnightRefresh(context: Context, alarmManager: AlarmManager) {
+        val calendar = Calendar.getInstance().apply {
+            add(Calendar.DATE, 1)
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 5)
+            set(Calendar.SECOND, 0)
+        }
+        val intent = Intent(context, AlarmReceiver::class.java).apply { action = "REFRESH_SCHEDULE" }
+        val pendingIntent = PendingIntent.getBroadcast(context, 999, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, calendar.timeInMillis, pendingIntent)
     }
 
     private fun fallbackSingleSchedule(context: Context, alarmManager: AlarmManager, prefs: SharedPreferences) {
