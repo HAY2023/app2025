@@ -74,13 +74,19 @@ object AlarmScheduler {
             set(Calendar.SECOND, 0)
         }
         val intent = Intent(context, AlarmReceiver::class.java).apply { action = "REFRESH_SCHEDULE" }
-        val pendingIntent = PendingIntent.getBroadcast(context, 999, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, calendar.timeInMillis, pendingIntent)
+        val pendingIntent = PendingIntent.getBroadcast(
+            context, 999, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        alarmManager.setExactAndAllowWhileIdle(
+            AlarmManager.RTC_WAKEUP,
+            calendar.timeInMillis,
+            pendingIntent
+        )
     }
 
     private fun fallbackSingleSchedule(context: Context, alarmManager: AlarmManager, prefs: SharedPreferences) {
         scheduleExactTime(context, alarmManager, prefs.getString("WAKE_TIME", "00:00") ?: "00:00", ACTION_WAKE_UP_TV, 0)
-        scheduleExactTime(context, alarmManager, prefs.getString("SLEEP_TIME", "00:00") ?: "00:00", ACTION_SLEEP_TV, 100)
+        scheduleExactTime(context, alarmManager, prefs.getString("SLEEP_TIME", "00:00") ?: "00:00", ACTION_SLEEP_TV, 1000)
     }
 
     private fun cancelAlarm(context: Context, alarmManager: AlarmManager, actionName: String, requestCode: Int) {
