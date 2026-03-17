@@ -237,9 +237,6 @@ class MainActivity : AppCompatActivity() {
                         updatePairingUI()
                         startBackgroundService()
                         syncWithSupabase()
-                        
-                        // إرسال التطبيق للخلفية حتى لا يشوش على الشاشة
-                        moveTaskToBack(true)
                     }
                 } else {
                     showToast("❌ فشل تسجيل الدخول: تحقق من البيانات")
@@ -348,9 +345,6 @@ class MainActivity : AppCompatActivity() {
                         } else {
                             startService(serviceIntent)
                         }
-                        
-                        // إرسال التطبيق للخلفية حتى لا يشوش على الشاشة
-                        moveTaskToBack(true)
                     }
                 } else {
                     showToast("خطأ في إنشاء الجهاز")
