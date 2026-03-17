@@ -7,7 +7,8 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.util.Log
 import org.json.JSONArray
-import java.util.Calendar
+import java.text.SimpleDateFormat
+import java.util.*
 
 object AlarmScheduler {
     const val ACTION_WAKE_UP_TV = "WAKE_UP_TV"
