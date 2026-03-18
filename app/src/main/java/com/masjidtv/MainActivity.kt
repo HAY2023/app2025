@@ -129,6 +129,9 @@ class MainActivity : AppCompatActivity() {
         updatePairingUI()
         updateUI()
         updateConnectionStatus()
+        if (isPaired()) {
+            checkAndRequestPermissions()
+        }
 
         btnUnpair.setOnClickListener {
             AlertDialog.Builder(this)
@@ -236,6 +239,7 @@ class MainActivity : AppCompatActivity() {
                     withContext(Dispatchers.Main) {
                         updatePairingUI()
                         startBackgroundService()
+                        checkAndRequestPermissions()
                         syncWithSupabase()
                     }
                 } else {
@@ -335,6 +339,7 @@ class MainActivity : AppCompatActivity() {
 
                     withContext(Dispatchers.Main) {
                         updatePairingUI()
+                        checkAndRequestPermissions()
                         Toast.makeText(this@MainActivity, "✅ تم ربط الجهاز بنجاح!", Toast.LENGTH_LONG).show()
                         syncWithSupabase()
                         
